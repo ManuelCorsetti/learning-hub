@@ -5,6 +5,8 @@ export type Route =
   | { page: 'area'; areaId: string; topicId: string | null; view: AreaView }
   | { page: 'review' }
   | { page: 'goals' }
+  | { page: 'lesson'; lessonId: string }
+  | { page: 'practice' }
 
 export type AreaView = 'list' | 'graph'
 
@@ -20,6 +22,8 @@ export function parseRoute(hash: string): Route {
       view: params.get('view') === 'graph' ? 'graph' : 'list',
     }
   }
+  if (parts[0] === 'lessons' && parts[1]) return { page: 'lesson', lessonId: parts[1] }
+  if (parts[0] === 'practice') return { page: 'practice' }
   if (parts[0] === 'review') return { page: 'review' }
   if (parts[0] === 'goals') return { page: 'goals' }
   return { page: 'home' }
@@ -32,6 +36,8 @@ export function areaHref(areaId: string | null, topicId?: string | null, view: A
   const query = params.toString()
   return `#/areas/${areaId ?? 'inbox'}${query ? `?${query}` : ''}`
 }
+
+export const lessonHref = (lessonId: string) => `#/lessons/${lessonId}`
 
 export function navigate(href: string) {
   window.location.hash = href.replace(/^#/, '')

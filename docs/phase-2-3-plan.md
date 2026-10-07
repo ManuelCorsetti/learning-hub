@@ -7,10 +7,27 @@ Follows on from [phase-1-plan.md](phase-1-plan.md) and uses the tables in
 
 - **Phase 1 is built** (build steps 1–9). Its prompt-tuning reviews (steps 6
   and 7) still need to happen on real notes.
-- **Phase 2 is next**, starting at build step 10 below. Phase 3 comes after
-  Phase 2 is in use.
+- **Phase 2 is built** (build steps 10–18). Its prompt review (step 10) still
+  needs to happen: run `npm run ai:lesson` (and `npm run ai:lesson -- --questions`
+  for the imported article) and tune `prompts/lesson_generator.txt`.
+- **Phase 3 is next**, starting at build step 19, once Phase 2 is in use.
 
-Where Phase 2 plugs into the existing code:
+Where Phase 2 lives:
+
+| Piece | Where |
+|---|---|
+| Block, lesson and answer schemas, lesson rules | `shared/lessons.ts` |
+| Migration | `backend/src/db/migrations/0002_phase2.sql` |
+| Versions and review items | `backend/src/services/lessons.ts` (`createLesson`, `addVersion`) |
+| Article import | `backend/src/services/articles.ts`, run on server start |
+| Generation | `backend/src/ai/lessons.ts`, `prompts/lesson_generator.txt`, `backend/scripts/generate-lesson.ts` |
+| Grading and rating | `backend/src/services/grading.ts` |
+| Scheduler (`ts-fsrs` 5.4.2) | `backend/src/services/scheduler.ts`. An item's state is always the replay of its rated attempts; a change of library or parameters is rebuilt on start |
+| Attempts and Practice queue | `backend/src/services/practice.ts` |
+| Mastery | `measureTopics()` in `backend/src/services/status.ts` |
+| UI | `frontend/src/pages/LessonPage.tsx`, `PracticePage.tsx`, `frontend/src/components/lesson/` |
+
+Where Phase 2 was planned to plug into the Phase 1 code:
 
 | Need | Where |
 |---|---|
@@ -116,7 +133,7 @@ types**: the original 7 plus 2 that the existing article format needs.
 | `quiz_mcq` | `id`, `question`, `options` (exactly 4), `correct_index` (0–3), `pitfall_note` | exact |
 | `quiz_true_false` | `id`, `statement`, `answer`, `pitfall_note` | exact |
 | `fill_in_blank` | `id`, `sentence` (contains `___`), `acceptable_answers` (≥ 1) | case-insensitive, trimmed |
-| `code_challenge` | `id`, `language`, `snippet`, `expected_answer`, `hint` | normalised text compare, never executed |
+| `code_challenge` | `id`, `language`, `question`, `snippet`, `expected_answer`, `hint` | normalised text compare (case, whitespace, spaces around punctuation and a trailing `;` ignored), never executed. `question` was added during the build: the snippet alone does not say what to work out |
 | `ordering` | `id`, `prompt`, `items_shuffled`, `correct_order` | score = share of items in the correct position |
 | `project_prompt` | `id`, `description`, `success_criteria` (≥ 1) | self-ticked checklist. Logged, **not scheduled**, not part of mastery |
 
@@ -265,4 +282,11 @@ This needs both earlier phases: lessons to edit and attempts to learn from.
   prerequisites in Next up, or only a measured one? (Phase 1 counts it.)
 - **Review cap**: should a session have a daily cap on reviews?
 - **Lesson design**: is a design needed for the lesson and review pages, or
-  are the existing article page styles enough?
+  are the existing article page styles enough? (Phase 2 reuses the v0.1 article
+  layout.)
+- **Retention right after a wrong answer**: retention is the recall probability
+  *now*, which FSRS puts near 100 % just after any review, right or wrong. So
+  mastery reads high straight after a session with mistakes, and only decays
+  over time. Derived status stays *learning* because those items are back in
+  the learning steps. Should mastery also discount items in `learning` /
+  `relearning`?

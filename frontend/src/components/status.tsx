@@ -31,11 +31,14 @@ export function StatusPill({ status }: { status: TopicStatusInfo }) {
   )
 }
 
+export const percent = (value: number) => `${Math.round(value * 100)}%`
+
 export function masteryText(status: TopicStatusInfo): string {
+  const due = status.reviewsDue ? ` ${status.reviewsDue} review${status.reviewsDue === 1 ? '' : 's'} due.` : ''
   const measured =
     status.mastery === null
-      ? 'Mastery: not measured yet. Lessons and tests arrive in Phase 2.'
-      : `Mastery: ${Math.round(status.mastery * 100)}% (measured).`
+      ? 'Mastery: not measured yet. Build a lesson to start measuring.'
+      : `Mastery: ${percent(status.mastery)} (measured).${due}`
   if (!status.override) return measured
   const label = status.override === 'solid' ? 'Solid (self-assessed)' : STATUS_LABELS[status.override]
   return `${label} is your override; measured status is ${STATUS_LABELS[status.derived].toLowerCase()}. ${measured}`
@@ -49,4 +52,18 @@ export function formatDate(iso: string): string {
 
 export function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
+/** "in 10 minutes", "in 3 days", "2 hours ago", "in under a minute". */
+export function relativeTime(iso: string, now = Date.now()): string {
+  const diff = new Date(iso).getTime() - now
+  const abs = Math.abs(diff)
+  const units: [Intl.RelativeTimeFormatUnit, number][] = [
+    ['day', 86_400_000],
+    ['hour', 3_600_000],
+    ['minute', 60_000],
+  ]
+  const fmt = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
+  for (const [unit, ms] of units) if (abs >= ms) return fmt.format(Math.round(diff / ms), unit)
+  return diff > 0 ? 'in under a minute' : 'just now'
 }
