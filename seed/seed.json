@@ -1,0 +1,38 @@
+{
+  "note": "Starter map: the four Learning Studio v0.1 articles as backlog topics. Loaded once, into an empty database.",
+  "areas": [
+    { "key": "data", "name": "Data engineering", "summary": "Modelling, pipelines and moving data reliably into analytical systems." },
+    { "key": "ml", "name": "Machine learning", "summary": "Models and decisioning, with a focus on marketing." },
+    { "key": "cloud", "name": "Cloud & platform", "summary": "Networking and platform architecture, mostly on GCP." }
+  ],
+  "topics": [
+    {
+      "area": "data",
+      "title": "Dimensional modelling",
+      "summary": "Facts in the centre, context around them: Kimball concepts such as grain, facts, dimensions and conformed dimensions, applied in BigQuery.",
+      "why_i_care": "Declaring the grain of marketing-decisioning tables (impressions, sessions, offers) before calculating response rate, attribution or uplift.",
+      "resources": [
+        {
+          "kind": "note",
+          "title": "Draft lesson from Learning Studio v0.1",
+          "note": "Six authored sections (business question, workflow, facts vs dimensions, denormalisation, conformed dimensions, marketing grain) kept in seed/articles/dimensional-modelling.json for import as the first lesson in Phase 2."
+        }
+      ]
+    },
+    {
+      "area": "data",
+      "title": "Change data capture",
+      "summary": "Moving source-system changes into analytical systems reliably: pipelines and streaming."
+    },
+    {
+      "area": "ml",
+      "title": "Reinforcement learning for marketing",
+      "summary": "A practical mental model for states, actions, rewards and long-term customer value in decisioning."
+    },
+    {
+      "area": "cloud",
+      "title": "Cloud networking fundamentals",
+      "summary": "CIDR, routing, VPNs, VPCs and managed services, connected to real GCP architectures."
+    }
+  ]
+}

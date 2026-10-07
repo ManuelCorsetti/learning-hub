@@ -1,0 +1,71 @@
+{
+  "source": "Learning Studio v0.1 article (frontend/src/main.jsx at commit 8b9778e)",
+  "note": "Kept for Phase 2: import as a lesson with origin=imported_article. Section visuals map to diagram blocks; their React components are in git history at commit 8b9778e (Visual in src/main.jsx, styles in src/styles.css).",
+  "id": "dimensional-modelling",
+  "title": "Dimensional modelling",
+  "category": "Data engineering",
+  "description": "Facts in the centre. Context around them. A visual guide to Kimball concepts.",
+  "tags": [
+    "Kimball",
+    "BigQuery",
+    "Data modelling"
+  ],
+  "sections": [
+    {
+      "id": "mental-model",
+      "title": "Start with the business question",
+      "body": "The most useful starting point is not a table. It is the question you want to answer. “I want to analyse sales by customer, product, store and date” already tells you the shape of the model.",
+      "visual": "star",
+      "callout": "Facts answer “what happened / how much?” Dimensions answer “who / what / where / when / why?”"
+    },
+    {
+      "id": "workflow",
+      "title": "A clearer modelling workflow",
+      "body": "The order matters because the grain is the contract that keeps every later decision honest.",
+      "steps": [
+        {
+          "title": "Choose a process",
+          "text": "Sales, orders, shipments, claims, sessions or marketing impressions."
+        },
+        {
+          "title": "Declare the grain",
+          "text": "State exactly what one fact row means: one row per product on one transaction."
+        },
+        {
+          "title": "Identify dimensions",
+          "text": "What will users filter, group or slice by? Date, customer, product, channel, promotion."
+        },
+        {
+          "title": "Identify facts",
+          "text": "What numeric measurements are valid at that grain? Units, revenue, cost, discount."
+        }
+      ]
+    },
+    {
+      "id": "facts-dimensions",
+      "title": "What goes where?",
+      "body": "A fact table records an event at a declared grain. Dimensions hold the descriptive context that makes the event useful to analyse.",
+      "visual": "schema"
+    },
+    {
+      "id": "denormalisation",
+      "title": "The dimension becomes the flat table",
+      "body": "Kimball is not saying the fact becomes a dimension. Descriptive hierarchies are usually flattened into a wide dimension so an analyst can filter product → category → department without walking a chain of joins.",
+      "visual": "hierarchy",
+      "callout": "In BigQuery, a denormalised dimension often makes the common analytical query simpler and avoids repeated joins through small lookup tables."
+    },
+    {
+      "id": "conformed",
+      "title": "Conformed dimensions create a shared language",
+      "body": "A conformed dimension is reused consistently by multiple business processes. Sales and returns can both use the same product definition, so “category” means the same thing in both analyses.",
+      "visual": "conformed"
+    },
+    {
+      "id": "your-context",
+      "title": "How this maps to your work",
+      "body": "For marketing decisioning, the event might be an impression or a customer session. The grain has to be explicit before calculating response rate, attribution or uplift.",
+      "visual": "marketing",
+      "callout": "Example grain: one row per customer × offer × impression timestamp. Customer, offer, channel and date are dimensions; impressed, clicked, converted and value are facts."
+    }
+  ]
+}

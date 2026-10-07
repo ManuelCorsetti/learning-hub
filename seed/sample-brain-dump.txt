@@ -1,0 +1,7 @@
+Things I keep meaning to learn properly:
+- python CLI tools (typer? click?) - want a CLI version of datascope
+- abstract base classes / interfaces in python, when to use Protocol vs ABC
+- go vs rust, probably go first for small services, rust ownership looks hard
+- dbt: incremental models, macros, testing. materialization strategies in general
+- kimball dimensional modelling, data vault, medallion architecture - how they compare
+- agentic AI dev: tool use, structured outputs, evals, sandboxed execution
