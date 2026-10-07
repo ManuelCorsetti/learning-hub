@@ -15,7 +15,9 @@
     "db:migrate": "tsx --disable-warning=ExperimentalWarning backend/scripts/migrate.ts",
     "db:seed": "tsx --disable-warning=ExperimentalWarning backend/scripts/seed.ts",
     "db:reset": "tsx --disable-warning=ExperimentalWarning backend/scripts/reset.ts",
+    "db:replay": "tsx --disable-warning=ExperimentalWarning backend/scripts/replay.ts",
     "ai:smoke": "tsx --disable-warning=ExperimentalWarning backend/scripts/ai-smoke.ts",
+    "ai:lesson": "tsx --disable-warning=ExperimentalWarning backend/scripts/generate-lesson.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
@@ -27,6 +29,7 @@
     "hono": "4.13.13",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "ts-fsrs": "5.4.2",
     "uuid": "14.0.2",
     "zod": "4.6.5"
   },

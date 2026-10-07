@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono'
 import { z } from 'zod'
 import {
   AcceptManyInput,
+  AttemptInput,
   CaptureInput,
   CreateAreaInput,
   CreateGoalInput,
@@ -11,12 +12,14 @@ import {
   LinkGoalInput,
   MergeTopicInput,
   SetStatusInput,
+  StartSessionInput,
   UpdateAreaInput,
   UpdateGoalInput,
   UpdateTopicInput,
 } from '../../shared/api'
 import { aiConfigured } from './ai/client'
 import { runCapture } from './ai/capture'
+import { generateLesson, generateQuestions } from './ai/lessons'
 import { explainNextUp } from './ai/nextUpWhy'
 import { runOrganise } from './ai/organise'
 import type { Db } from './db/connection'
@@ -24,9 +27,11 @@ import { AppError } from './lib'
 import { archiveArea, createArea, updateArea } from './services/areas'
 import { USER } from './services/events'
 import { addResource, archiveResource, createGoal, linkGoal, listGoals, unlinkGoal, updateGoal } from './services/goals'
+import { getLessonView } from './services/lessons'
 import { createLink, removeLink } from './services/links'
 import { getAreaDetail, getAreaGraph, getHome } from './services/map'
 import { rankNextUp } from './services/nextUp'
+import { completeSession, practiceQueue, recordAttempt, startSession } from './services/practice'
 import {
   acceptMany,
   acceptProposal,
@@ -170,6 +175,29 @@ export function createApp(db: Db, options: { aiAvailable?: () => boolean } = {})
     return c.json({ ok: true })
   })
   app.post('/runs/:id/accept', (c) => c.json(acceptRun(db, c.req.param('id'))))
+
+  // Lessons, attempts and Practice
+  app.post('/topics/:id/lessons', async (c) => {
+    requireAi()
+    const { lessonId } = await generateLesson(db, c.req.param('id'))
+    return c.json(getLessonView(db, lessonId), 201)
+  })
+  app.get('/lessons/:id', (c) => c.json(getLessonView(db, c.req.param('id'))))
+  app.post('/lessons/:id/questions', async (c) => {
+    requireAi()
+    await generateQuestions(db, c.req.param('id'))
+    return c.json(getLessonView(db, c.req.param('id')))
+  })
+  app.post('/sessions', async (c) => {
+    const input = await body(c, StartSessionInput)
+    return c.json({ id: startSession(db, input.kind, input.lesson_version_id ?? null) }, 201)
+  })
+  app.post('/sessions/:id/complete', (c) => {
+    completeSession(db, c.req.param('id'))
+    return c.json({ ok: true })
+  })
+  app.post('/attempts', async (c) => c.json(recordAttempt(db, await body(c, AttemptInput)), 201))
+  app.get('/practice', (c) => c.json(practiceQueue(db)))
 
   return app
 }

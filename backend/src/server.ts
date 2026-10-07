@@ -8,9 +8,13 @@ import { createApp } from './app'
 import { config, ROOT } from './config'
 import { openDb } from './db/connection'
 import { seedIfEmpty } from './db/seed'
+import { importSeedArticles } from './services/articles'
+import { rebuildIfStale } from './services/scheduler'
 
 const db = openDb(config.dbPath)
 if (seedIfEmpty(db)) console.log('Seeded the starter areas and topics.')
+for (const title of importSeedArticles(db)) console.log(`Imported the "${title}" article as a lesson.`)
+if (rebuildIfStale(db)) console.log('Rebuilt review schedules for the current scheduler version.')
 
 const app = new Hono()
 app.route('/', createApp(db))

@@ -1,19 +1,26 @@
 // Request schemas (validated on the server) and response shapes (used by the UI).
 import { z } from 'zod'
 import {
+  CONFIDENCES,
   GOAL_STATUSES,
   LINK_TYPES,
   RESOURCE_KINDS,
+  STUDY_SESSION_KINDS,
   TOPIC_STATUSES,
   type Actor,
   type GoalStatus,
+  type LessonAuthor,
+  type LessonOrigin,
   type LinkType,
   type ProposalKind,
   type ProposalStatus,
+  type Rating,
   type ResourceKind,
+  type ReviewState,
   type TopicEventType,
   type TopicStatus,
 } from './domain'
+import type { Block, InteractiveBlock } from './lessons'
 
 const text = z.string().trim()
 const optionalText = text.nullable().optional()
@@ -77,6 +84,19 @@ export const CreateResourceInput = z
   })
   .refine((r) => r.url || r.note, { message: 'A resource needs a URL or a note' })
 
+export const StartSessionInput = z.object({
+  kind: z.enum(STUDY_SESSION_KINDS).exclude(['placement']),
+  lesson_version_id: z.string().nullable().optional(),
+})
+export const AttemptInput = z.object({
+  session_id: z.string(),
+  review_item_id: z.string(),
+  /** Any JSON; checked against the block's answer schema on the server. */
+  answer: z.unknown(),
+  confidence: z.union(CONFIDENCES.map((c) => z.literal(c))).nullable().optional(),
+  duration_ms: z.number().int().min(0).nullable().optional(),
+})
+
 export const CaptureInput = z.object({ text: text.min(3).max(20000) })
 export const AcceptManyInput = z.object({ ids: z.array(z.string()).min(1) })
 
@@ -97,6 +117,7 @@ export interface TopicStatusInfo {
   override: TopicStatus | null
   overrideNote: string | null
   mastery: number | null
+  reviewsDue: number
 }
 
 export interface TopicListItem {
@@ -125,6 +146,7 @@ export interface HomeData {
   inboxCount: number
   topicCount: number
   pendingProposals: number
+  reviewsDue: number
   aiAvailable: boolean
 }
 
@@ -174,6 +196,8 @@ export interface TopicDetail extends TopicListItem {
   goals: { id: string; title: string; status: GoalStatus }[]
   resources: ResourceView[]
   events: TopicEventView[]
+  measurement: Measurement
+  lessons: LessonSummary[]
 }
 
 export interface AreaDetail {
@@ -235,6 +259,7 @@ export interface NextUpItem {
     unlocks: string[]
     goals: string[]
     learning: boolean
+    reviewsDue: number
   }
   why: string | null
   fallbackWhy: string
@@ -244,4 +269,70 @@ export interface AcceptResult {
   id: string
   status: ProposalStatus
   decision_note: string | null
+}
+
+export interface LessonSummary {
+  id: string
+  title: string
+  origin: LessonOrigin
+  version_no: number
+  updated_at: string
+  /** Scheduled (testable) blocks in the latest version. */
+  questionCount: number
+  hasProject: boolean
+}
+
+export interface ItemProgress {
+  review_item_id: string
+  is_scheduled: boolean
+  attempts: number
+  last_correct: boolean | null
+  state: ReviewState | null
+  due_at: string | null
+}
+
+export interface LessonView {
+  id: string
+  title: string
+  origin: LessonOrigin
+  archived_at: string | null
+  topic: { id: string; title: string; area_id: string | null }
+  version: { id: string; version_no: number; created_by: LessonAuthor; change_note: string | null; created_at: string }
+  versionCount: number
+  blocks: Block[]
+  /** Keyed by block id; only interactive blocks have an entry. */
+  items: Record<string, ItemProgress>
+  measurement: Measurement
+}
+
+export interface AttemptResult {
+  attempt_id: string
+  is_correct: boolean | null
+  score: number
+  rating: Rating | null
+  confidently_wrong: boolean
+  /** Next due date, or null for blocks that are not scheduled. */
+  due_at: string | null
+  state: ReviewState | null
+  /** Topics whose override measurement just caught up with. */
+  resolvedTopics: string[]
+}
+
+export interface PracticeItem {
+  review_item_id: string
+  lesson_id: string
+  lesson_title: string
+  topic_id: string
+  topic_title: string
+  lesson_version_id: string
+  block: InteractiveBlock
+  state: ReviewState
+  due_at: string
+  lapses: number
+}
+
+export interface PracticeData {
+  due: PracticeItem[]
+  /** When the next item not yet due comes up, if any. */
+  nextDueAt: string | null
 }

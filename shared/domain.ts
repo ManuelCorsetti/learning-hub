@@ -48,6 +48,45 @@ export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number]
 export const AI_TASKS = ['capture', 'organise', 'next_up_why', 'generate_lesson', 'lesson_patch', 'optimise'] as const
 export type AiTask = (typeof AI_TASKS)[number]
 
+export const LESSON_ORIGINS = ['ai', 'user', 'imported_article'] as const
+export type LessonOrigin = (typeof LESSON_ORIGINS)[number]
+
+export const LESSON_AUTHORS = ['ai', 'user'] as const
+export type LessonAuthor = (typeof LESSON_AUTHORS)[number]
+
+export const TEACHING_BLOCK_TYPES = ['concept', 'steps', 'diagram'] as const
+export const INTERACTIVE_BLOCK_TYPES = [
+  'quiz_mcq',
+  'quiz_true_false',
+  'fill_in_blank',
+  'code_challenge',
+  'ordering',
+  'project_prompt',
+] as const
+export const BLOCK_TYPES = [...TEACHING_BLOCK_TYPES, ...INTERACTIVE_BLOCK_TYPES] as const
+export type TeachingBlockType = (typeof TEACHING_BLOCK_TYPES)[number]
+export type InteractiveBlockType = (typeof INTERACTIVE_BLOCK_TYPES)[number]
+export type BlockType = (typeof BLOCK_TYPES)[number]
+
+/** Diagram blocks can only use a key that has a React component in the frontend registry. */
+export const DIAGRAM_KEYS = ['star', 'schema', 'hierarchy', 'conformed', 'marketing'] as const
+export type DiagramKey = (typeof DIAGRAM_KEYS)[number]
+
+export const STUDY_SESSION_KINDS = ['lesson', 'review', 'placement'] as const
+export type StudySessionKind = (typeof STUDY_SESSION_KINDS)[number]
+
+/** 1 guessing · 2 fairly sure · 3 certain */
+export const CONFIDENCES = [1, 2, 3] as const
+export type Confidence = (typeof CONFIDENCES)[number]
+export const CONFIDENCE_LABELS: Record<Confidence, string> = { 1: 'Guessing', 2: 'Fairly sure', 3: 'Certain' }
+
+/** 1 Again · 2 Hard · 3 Good · 4 Easy */
+export type Rating = 1 | 2 | 3 | 4
+export const RATING_LABELS: Record<Rating, string> = { 1: 'Again', 2: 'Hard', 3: 'Good', 4: 'Easy' }
+
+export const REVIEW_STATES = ['new', 'learning', 'review', 'relearning'] as const
+export type ReviewState = (typeof REVIEW_STATES)[number]
+
 /** Mastery (coverage × retention) at or above this, with every item tested, counts as solid. */
 export const SOLID_MASTERY_THRESHOLD = 0.8
 

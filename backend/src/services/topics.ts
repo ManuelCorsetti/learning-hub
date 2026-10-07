@@ -4,6 +4,7 @@ import { all, get, run, tx, type Db } from '../db/connection'
 import { AppError, clean, conflict, newId, notFound, nowIso } from '../lib'
 import { getArea, requireLiveArea } from './areas'
 import { listEvents, recordEvent, type Ctx } from './events'
+import { listTopicLessons } from './lessons'
 import { linkProblem, normaliseLink, type LinkRow } from './links'
 import { measureTopics, statusInfo } from './status'
 
@@ -191,7 +192,7 @@ export function restoreTopic(db: Db, ctx: Ctx, id: string): TopicRow {
 }
 
 /**
- * Merges `mergeId` into `keepId`: links, goals and resources move to the kept topic,
+ * Merges `mergeId` into `keepId`: links, goals, resources and lessons move to the kept topic,
  * and the merged topic is archived with merged_into_id. Links that would become
  * duplicates, self-links or loops are dropped.
  */
@@ -231,6 +232,7 @@ export function mergeTopics(db: Db, ctx: Ctx, keepId: string, mergeId: string): 
     )
     run(db, 'DELETE FROM topic_goals WHERE topic_id = ?', mergeId)
     run(db, 'UPDATE resources SET topic_id = ? WHERE topic_id = ?', keepId, mergeId)
+    run(db, 'UPDATE lessons SET topic_id = ? WHERE topic_id = ?', keepId, mergeId)
 
     const now = nowIso()
     run(db, 'UPDATE topics SET merged_into_id = ?, archived_at = ?, updated_at = ? WHERE id = ?', keepId, now, now, mergeId)
@@ -280,6 +282,7 @@ export function getTopicDetail(db: Db, id: string): TopicDetail {
   const row = getTopic(db, id)
   if (!row) throw notFound('Topic')
   const [item] = toListItems(db, [row])
+  const measurement = measureTopics(db, [id]).get(id)!
   const area = row.area_id ? getArea(db, row.area_id) : undefined
 
   const links = all<LinkRow & { other_id: string; other_title: string; other_area: string | null }>(
@@ -322,5 +325,7 @@ export function getTopicDetail(db: Db, id: string): TopicDetail {
       id,
     ),
     events: listEvents(db, id),
+    measurement,
+    lessons: listTopicLessons(db, id),
   }
 }
