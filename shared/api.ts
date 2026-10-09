@@ -10,6 +10,7 @@ import {
   STUDY_SESSION_KINDS,
   TOPIC_STATUSES,
   type Actor,
+  type ChatRole,
   type GoalStatus,
   type LessonAuthor,
   type LessonLevel,
@@ -89,7 +90,7 @@ export const CreateResourceInput = z
   .refine((r) => r.url || r.note, { message: 'A resource needs a URL or a note' })
 
 export const StartSessionInput = z.object({
-  kind: z.enum(STUDY_SESSION_KINDS).exclude(['placement']),
+  kind: z.enum(STUDY_SESSION_KINDS),
   lesson_version_id: z.string().nullable().optional(),
 })
 export const AttemptInput = z.object({
@@ -118,6 +119,11 @@ export const StartLessonRequestInput = z.object({
   level: z.enum(LESSON_LEVELS).nullable().optional(),
   brief: z.string().trim().max(4000).nullable().optional(),
 })
+export const LessonMessageInput = z.object({
+  message: z.string().trim().min(1).max(4000),
+  block_id: z.string().nullable().optional(),
+})
+
 export const LessonRequestReplyInput = z.object({ message: z.string().trim().min(1).max(4000) })
 
 export const CaptureInput = z.object({ text: text.min(3).max(20000) })
@@ -270,6 +276,8 @@ export interface ProposalView {
   rationale: string | null
   depends_on_id: string | null
   area_id: string | null
+  /** For lesson edits: the lesson to open to see the diff. */
+  lesson_id: string | null
   decision_note: string | null
   created_at: string
   decided_at: string | null
@@ -279,6 +287,8 @@ export interface ProposalGroup {
   ai_run_id: string | null
   task: string | null
   created_at: string
+  /** Optimise runs: what Claude read in your answers. */
+  observations: string[]
   proposals: ProposalView[]
 }
 
@@ -337,7 +347,8 @@ export interface LessonView {
   archived_at: string | null
   topic: { id: string; title: string; area: { id: string; name: string } | null; parent: { id: string; title: string } | null }
   version: { id: string; version_no: number; created_by: LessonAuthor; change_note: string | null; created_at: string }
-  versionCount: number
+  /** Newest first. */
+  versions: LessonVersionSummary[]
   blocks: Block[]
   /** Keyed by block id; only interactive blocks have an entry. */
   items: Record<string, ItemProgress>
@@ -406,4 +417,60 @@ export interface LessonRequestView {
   lesson_id: string | null
   messages: LessonRequestMessage[]
   plan: LessonPlan | null
+}
+
+export interface PatchChange {
+  kind: 'changed' | 'added' | 'removed' | 'moved'
+  before: Block | null
+  after: Block | null
+  /** Where in the lesson, e.g. "after \"Change events\"". */
+  where: string
+  /** For questions: kept = schedule carries on, reset = a new schedule replaces the old, new = first schedule, retired = schedule ends. */
+  schedule: 'kept' | 'reset' | 'new' | 'retired' | null
+}
+
+export interface LessonPatchView {
+  proposal_id: string
+  status: ProposalStatus
+  change_note: string
+  base_version_no: number
+  /** True when the lesson has a newer version than the patch was written against. */
+  stale: boolean
+  changes: PatchChange[]
+  decision_note: string | null
+}
+
+export interface LessonVersionSummary {
+  id: string
+  version_no: number
+  created_by: LessonAuthor
+  change_note: string | null
+  created_at: string
+  questionCount: number
+}
+
+export interface ChatMessageView {
+  id: string
+  role: ChatRole
+  content: string
+  block_id: string | null
+  created_at: string
+  /** The edit Claude suggested with this reply, if any. */
+  patch: LessonPatchView | null
+}
+
+export interface OptimiseSignals {
+  confidentlyWrong: { topic: string; lesson: string; question: string; times: number }[]
+  struggling: { topic: string; lesson: string; question: string; lapses: number; difficulty: number }[]
+  decaying: { topic: string; mastery: number; reviews_due: number }[]
+  contradicted: { topic: string; you_set: TopicStatus; measured: TopicStatus; mastery: number }[]
+}
+
+export interface SchedulerView {
+  ratedReviews: number
+  minReviews: number
+  /** FSRS w0–w3: days a memory lasts after a first answer rated Again, Hard, Good, Easy. */
+  initialStability: number[]
+  defaultInitialStability: number[]
+  personal: { id: string; trained_on_attempts: number; created_at: string } | null
 }

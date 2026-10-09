@@ -9,6 +9,7 @@ import {
   CreateLinkInput,
   CreateResourceInput,
   CreateTopicInput,
+  LessonMessageInput,
   LessonRequestReplyInput,
   LinkGoalInput,
   MergeTopicInput,
@@ -22,9 +23,12 @@ import {
 } from '../../shared/api'
 import { aiConfigured } from './ai/client'
 import { runCapture } from './ai/capture'
+import { sendLessonMessage } from './ai/lessonEditor'
 import { planLessonTurn } from './ai/lessonPlanner'
 import { buildFromRequest, generateLesson, generateQuestions } from './ai/lessons'
 import { explainNextUp } from './ai/nextUpWhy'
+import { optimiseSignals, runOptimise } from './ai/optimise'
+import { generatePlacement } from './ai/placement'
 import { runOrganise } from './ai/organise'
 import type { Db } from './db/connection'
 import { AppError } from './lib'
@@ -32,11 +36,13 @@ import { archiveArea, createArea, updateArea } from './services/areas'
 import { USER } from './services/events'
 import { addResource, archiveResource, createGoal, linkGoal, listGoals, unlinkGoal, updateGoal } from './services/goals'
 import { createLessonRequest, getLessonRequest } from './services/lessonRequests'
-import { getLessonView } from './services/lessons'
+import { getLessonView, requireLesson, restoreVersion } from './services/lessons'
+import { listMessages } from './services/coauthor'
 import { createLink, removeLink } from './services/links'
 import { getAreaDetail, getAreaGraph, getHome } from './services/map'
 import { rankNextUp } from './services/nextUp'
 import { completeSession, practiceQueue, recordAttempt, startSession } from './services/practice'
+import { fitSchedulerParams, resetSchedulerParams, schedulerView } from './services/schedulerFit'
 import { getSettings, updateSettings } from './services/settings'
 import {
   acceptMany,
@@ -82,6 +88,9 @@ export function createApp(db: Db, options: { aiAvailable?: () => boolean } = {})
   app.get('/health', (c) => c.json({ ok: true }))
   app.get('/home', (c) => c.json(getHome(db, aiAvailable())))
   app.get('/settings', (c) => c.json(getSettings(db)))
+  app.get('/scheduler', (c) => c.json(schedulerView(db)))
+  app.post('/scheduler/fit', (c) => c.json(fitSchedulerParams(db)))
+  app.post('/scheduler/reset', (c) => c.json(resetSchedulerParams(db)))
   app.patch('/settings', async (c) => c.json(updateSettings(db, await body(c, UpdateSettingsInput))))
 
   // Next up
@@ -171,6 +180,11 @@ export function createApp(db: Db, options: { aiAvailable?: () => boolean } = {})
     requireAi()
     return c.json(await runCapture(db, (await body(c, CaptureInput)).text))
   })
+  app.get('/optimise/signals', (c) => c.json(optimiseSignals(db)))
+  app.post('/optimise', async (c) => {
+    requireAi()
+    return c.json(await runOptimise(db))
+  })
   app.post('/organise', async (c) => {
     requireAi()
     return c.json(await runOrganise(db))
@@ -207,7 +221,24 @@ export function createApp(db: Db, options: { aiAvailable?: () => boolean } = {})
     const { lessonId } = await buildFromRequest(db, c.req.param('id'))
     return c.json(getLessonView(db, lessonId), 201)
   })
+  app.post('/topics/:id/placement', async (c) => {
+    requireAi()
+    const { lessonId } = await generatePlacement(db, c.req.param('id'))
+    return c.json(getLessonView(db, lessonId), 201)
+  })
   app.get('/lessons/:id', (c) => c.json(getLessonView(db, c.req.param('id'))))
+  app.post('/lessons/:id/versions/:versionId/restore', (c) => {
+    restoreVersion(db, c.req.param('id'), c.req.param('versionId'))
+    return c.json(getLessonView(db, c.req.param('id')))
+  })
+  app.get('/lessons/:id/thread', (c) => {
+    requireLesson(db, c.req.param('id'))
+    return c.json(listMessages(db, c.req.param('id')))
+  })
+  app.post('/lessons/:id/thread', async (c) => {
+    requireAi()
+    return c.json(await sendLessonMessage(db, c.req.param('id'), await body(c, LessonMessageInput)))
+  })
   app.post('/lessons/:id/questions', async (c) => {
     requireAi()
     await generateQuestions(db, c.req.param('id'))

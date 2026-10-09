@@ -14,7 +14,10 @@ Follows on from [phase-1-plan.md](phase-1-plan.md) and uses the tables in
   (model switch and learner profile) and the Build lesson conversation. Its new
   prompt, `prompts/lesson_planner.txt`, needs a review on real topics:
   `npm run ai:lesson -- "Topic" --brief "…"`.
-- **Phase 3 is next**, starting at build step 19, once Phase 2 is in use.
+- **Phase 3 is built** (build steps 19–23; question variants, the optional
+  item, is not). Its stop-for-review steps still need real runs, since the build
+  had no API key: the co-author prompt (`prompts/lesson_editor.txt`) and diff,
+  `prompts/optimise.txt` and `prompts/placement.txt`.
 
 Where Phase 2 lives:
 
@@ -323,6 +326,39 @@ This needs both earlier phases: lessons to edit and attempts to learn from.
    - This would add a `review_item_variants` table, with attempts referencing
      the variant shown. That is an additive change.
 
+## As built
+
+- **Notes and co-author are one panel.** On a lesson, **Notes & edits** opens a
+  thread (one per lesson). **Note** on any block starts a note about that block.
+  Claude (`lesson_patch` task, `prompts/lesson_editor.txt`) replies, and when the
+  note asks for a change it proposes block operations: replace, add, remove,
+  move. The panel shows them as a diff with the schedule effect of each
+  question change (kept, restarts, new, stops). Accept saves the next version;
+  a newer suggestion supersedes an older pending one; a suggestion made against
+  an older version cannot be accepted. Claude gets the person's per-question
+  results, so it can fix questions they keep getting wrong.
+- **History** tab: every version with its change note; **Restore** copies an
+  older version forward.
+- **Optimise**: *Learn from my answers* on Practice and Review. Signals are
+  confidently-wrong answers (last 60 days), questions with 2+ lapses or FSRS
+  difficulty ≥ 7, measured topics under 60 % with reviews due, and overrides the
+  measurement disagrees with. Claude returns observations (shown on the Review
+  run) plus new topics (optionally as a prerequisite of an existing one), links
+  and merges, all as proposals.
+- **Placement test**: *Test out* on a topic page generates 5–12 questions as a
+  lesson with `origin = placement`, answered in a `placement` session. Answers
+  schedule reviews and measure the topic like any lesson. Answering *certain*
+  and right puts a question straight into the review state, so a confident,
+  correct test makes the topic measurably solid.
+- **Personal scheduler parameters**: Settings → Review scheduler. After 300
+  rated reviews, *Fit my parameters* fits FSRS's initial stabilities (w0–w3,
+  per first rating) from first-answer → next-review pairs by maximum likelihood,
+  pulled towards the defaults when evidence is thin and kept monotone; other
+  weights keep their defaults. This is the optimizer's pretrain step only. A
+  full fit could use `@open-spaced-repetition/binding` (native) later; the
+  replay design means swapping it in only changes what is stored in
+  `scheduler_params`.
+
 ## Build order (continues)
 
 19. `lesson_patch` proposal kind, diff view, apply as a new version, rollback.
@@ -344,7 +380,7 @@ This needs both earlier phases: lessons to edit and attempts to learn from.
 
 ---
 
-## Open questions (decide before Phase 2)
+## Open questions
 
 - ~~Mastery thresholds~~ **Decided:** 80 % mastery, every scheduled item
   tested and in the review state (`SOLID_MASTERY_THRESHOLD` in

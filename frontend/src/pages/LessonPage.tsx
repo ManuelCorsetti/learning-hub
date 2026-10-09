@@ -1,6 +1,6 @@
 // A lesson: the latest version's blocks in order, in the v0.1 article layout
 // (sticky table of contents on the left). Questions are answered inline.
-import type { CSSProperties } from 'react'
+import { useState, type CSSProperties } from 'react'
 import type { LessonView, Measurement } from '../../../shared/api'
 import { isInteractive, type Block, type InteractiveBlock } from '../../../shared/lessons'
 import { api, useAction, useApi } from '../api'
@@ -9,6 +9,7 @@ import { ConceptBlock, DiagramBlock, StepsBlock } from '../components/lesson/Tea
 import { useStudySession } from '../components/lesson/useStudySession'
 import { formatDate, percent } from '../components/status'
 import { Breadcrumbs, topicCrumbs } from '../components/Breadcrumbs'
+import { CoauthorPanel } from '../components/CoauthorPanel'
 
 interface Section {
   id: string
@@ -33,13 +34,34 @@ const label = (i: number) => String(i + 1).padStart(2, '0')
 
 export function LessonPage({ lessonId, aiAvailable }: { lessonId: string; aiAvailable: boolean }) {
   const { data: lesson, error } = useApi<LessonView>(`/lessons/${lessonId}`)
+  // Kept outside <Lesson> so the panel stays open when an accepted edit loads the new version.
+  const [coauthor, setCoauthor] = useState<{ open: boolean; blockId: string | null }>({ open: false, blockId: null })
   if (error) return <p className="error">{error}</p>
   if (!lesson) return <p className="muted">Loading…</p>
-  return <Lesson key={lesson.version.id} lesson={lesson} aiAvailable={aiAvailable} />
+  return (
+    <>
+      <Lesson
+        key={lesson.version.id}
+        lesson={lesson}
+        aiAvailable={aiAvailable}
+        onNote={(blockId) => setCoauthor({ open: true, blockId })}
+      />
+      {coauthor.open && (
+        <CoauthorPanel
+          lesson={lesson}
+          blockId={coauthor.blockId}
+          setBlockId={(blockId) => setCoauthor({ open: true, blockId })}
+          aiAvailable={aiAvailable}
+          onClose={() => setCoauthor({ open: false, blockId: null })}
+        />
+      )}
+    </>
+  )
 }
 
-function Lesson({ lesson, aiAvailable }: { lesson: LessonView; aiAvailable: boolean }) {
-  const record = useStudySession('lesson', lesson.version.id)
+function Lesson({ lesson, aiAvailable, onNote }: { lesson: LessonView; aiAvailable: boolean; onNote: (blockId: string | null) => void }) {
+  const placement = lesson.origin === 'placement'
+  const record = useStudySession(placement ? 'placement' : 'lesson', lesson.version.id)
   const { sections, project } = toSections(lesson.blocks)
   const questions = lesson.blocks.filter(isInteractive)
   const scroll = (id: string) => document.getElementById(`block-${id}`)?.scrollIntoView({ behavior: 'smooth' })
@@ -69,17 +91,22 @@ function Lesson({ lesson, aiAvailable }: { lesson: LessonView; aiAvailable: bool
       <div className="article-heading">
         <div>
           <span className="eyebrow">
-            Lesson · v{lesson.version.version_no} · {lesson.version.created_by === 'ai' ? 'written by Claude' : 'yours'} ·{' '}
+            {placement ? 'Placement test' : 'Lesson'} · v{lesson.version.version_no} · {lesson.version.created_by === 'ai' ? 'written by Claude' : 'yours'} ·{' '}
             {formatDate(lesson.version.created_at)}
           </span>
           <h1>{lesson.title}</h1>
           <p className="lede">
-            {questions.length
+            {placement
+              ? 'Answer every question without looking anything up, and say honestly how sure you are. Your answers measure what you already know; questions come back in Practice like any other.'
+              : questions.length
               ? 'Read each part, then answer its questions. Say how sure you are before you see the answer: your answers schedule the reviews.'
               : 'This lesson has no questions yet, so it cannot measure what you remember.'}
           </p>
           {!questions.length && <AddQuestions lessonId={lesson.id} aiAvailable={aiAvailable} />}
         </div>
+        <button className="btn" onClick={() => onNote(null)}>
+          ✎ Notes & edits
+        </button>
       </div>
       <div className="article-layout">
         <aside className="toc">
@@ -106,12 +133,16 @@ function Lesson({ lesson, aiAvailable }: { lesson: LessonView; aiAvailable: bool
                 <h2>{s.title}</h2>
                 {s.blocks.map((b) => (
                   <div key={b.id} className={`block block-${b.type}`}>
+                    <button className="note-btn" onClick={() => onNote(b.id)} title="Write a note about this block">
+                      ✎ Note
+                    </button>
                     {renderBlock(b)}
                   </div>
                 ))}
               </div>
             </section>
           ))}
+          {placement && <PlacementSummary lesson={lesson} />}
           {project && (
             <section className="finish-card" id={`block-${project.id}`}>
               <span className="eyebrow">Put it to work</span>
@@ -125,6 +156,27 @@ function Lesson({ lesson, aiAvailable }: { lesson: LessonView; aiAvailable: bool
         </div>
       </div>
     </div>
+  )
+}
+
+function PlacementSummary({ lesson }: { lesson: LessonView }) {
+  const items = Object.values(lesson.items).filter((i) => i.is_scheduled)
+  const answered = items.filter((i) => i.attempts > 0)
+  const right = answered.filter((i) => i.last_correct)
+  return (
+    <section className="finish-card">
+      <span className="eyebrow">Result</span>
+      <h2>
+        {answered.length < items.length
+          ? `${answered.length} of ${items.length} answered`
+          : `${right.length} of ${items.length} right`}
+      </h2>
+      <p>
+        {answered.length < items.length
+          ? 'Answer every question to finish the test.'
+          : 'Questions you missed come back in Practice within minutes, the ones you got right in days. The topic’s measured status updates as you review them, next to anything you set by hand.'}
+      </p>
+    </section>
   )
 }
 

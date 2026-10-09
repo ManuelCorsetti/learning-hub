@@ -49,7 +49,17 @@ The default model is `claude-opus-5-5`; set `LEARNING_MODEL` to change it.
 8. Answer the questions. Pick how sure you are before the answer is revealed;
    that sets the scheduler rating. Mastery and status update from your answers.
 9. **Practice** lists every review that is due, across all topics.
-10. Group related topics under a parent (area › topic › sub-topic): Capture and
+10. On a lesson, **Notes & edits** (or **Note** on a block): tell Claude what to
+    change. It suggests an edit as a diff; accept to save a new version. The
+    History tab restores older versions.
+11. **Learn from my answers** (Practice or Review): Claude reads where you were
+    wrong while certain or keep forgetting, and suggests map changes such as a
+    missing prerequisite.
+12. **Test out** on a topic page: a short placement test for something you
+    already know, which turns a self-assessment into measured mastery.
+13. Settings → Review scheduler: after 300 reviews, fit the scheduler to your
+    own memory.
+14. Group related topics under a parent (area › topic › sub-topic): Capture and
     Organise suggest it, or add sub-topics on a topic page. Prerequisites between
     sub-topics set the order of the parent's learning path.
 

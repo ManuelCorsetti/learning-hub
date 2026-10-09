@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { AttemptResult } from '../../../../shared/api'
-import type { Confidence } from '../../../../shared/domain'
+import type { Confidence, StudySessionKind } from '../../../../shared/domain'
 import { api } from '../../api'
 
 /**
  * A study session started on the first answer and completed when the page closes.
  * Returns a function that records an attempt for one review item.
  */
-export function useStudySession(kind: 'lesson' | 'review', lessonVersionId: string | null) {
+export function useStudySession(kind: StudySessionKind, lessonVersionId: string | null) {
   const session = useRef<Promise<string> | null>(null)
 
   useEffect(() => {

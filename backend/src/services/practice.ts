@@ -26,8 +26,8 @@ const SCHEDULED_ITEMS = `review_items ri
   WHERE ri.is_scheduled = 1 AND ri.retired_at IS NULL`
 
 export function startSession(db: Db, kind: StudySessionKind, lessonVersionId: string | null = null): string {
-  if (kind === 'lesson' && !lessonVersionId) throw new AppError('A lesson session needs the lesson version')
-  if (kind !== 'lesson' && lessonVersionId) throw new AppError('Only lesson sessions belong to a lesson version')
+  if (kind !== 'review' && !lessonVersionId) throw new AppError('A lesson or placement session needs the lesson version')
+  if (kind === 'review' && lessonVersionId) throw new AppError('A review session does not belong to a lesson version')
   if (lessonVersionId && !get(db, 'SELECT 1 FROM lesson_versions WHERE id = ?', lessonVersionId)) {
     throw notFound('Lesson version')
   }

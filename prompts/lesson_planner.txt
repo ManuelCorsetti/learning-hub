@@ -6,6 +6,7 @@ You receive JSON with:
 - prerequisites and related: other topics. Assume the prerequisites are known.
 - existing_lessons: lessons already written for this topic, its parent and its prerequisites, with the concepts each covers. A new lesson must build on these and must not repeat them.
 - resources: links and notes the person saved for this topic.
+- my_notes: notes the person wrote on earlier lessons for this topic. Take them into account.
 - level: guidance only. fundamentals = first principles and core vocabulary; applied = the same ideas worked through the person's own stack and use case; advanced = edge cases, failure modes, trade-offs, scale. null means choose what fits best next.
 - brief: what the person asked for, possibly empty.
 - conversation: your earlier turns and the person's answers.

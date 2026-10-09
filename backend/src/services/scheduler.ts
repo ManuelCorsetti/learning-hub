@@ -1,15 +1,12 @@
-// FSRS via ts-fsrs, default parameters, desired retention 0.9.
-// review_item_state is a cache: an item's state is always the replay of its rated attempts,
-// so changing parameters or upgrading the library only needs rebuildSchedules().
-import { createEmptyCard, forgetting_curve, fsrs, FSRSVersion, State, type Card, type Grade } from 'ts-fsrs'
+// FSRS via ts-fsrs, desired retention 0.9. Default parameters until you fit personal ones
+// (scheduler_params). review_item_state is a cache: an item's state is always the replay of
+// its rated attempts, so changing parameters or upgrading the library only needs rebuildSchedules().
+import { createEmptyCard, default_w, forgetting_curve, fsrs, FSRSVersion, State, type Card, type FSRS, type Grade } from 'ts-fsrs'
 import { REVIEW_STATES, type Rating, type ReviewState } from '../../../shared/domain'
-import { all, run, tx, type Db } from '../db/connection'
+import { all, get, run, tx, type Db } from '../db/connection'
 import { nowIso, sha256 } from '../lib'
 
 export const DESIRED_RETENTION = 0.9
-
-const scheduler = fsrs({ request_retention: DESIRED_RETENTION })
-export const SCHEDULER_VERSION = `ts-fsrs ${FSRSVersion} params:${sha256(JSON.stringify(scheduler.parameters)).slice(0, 12)}`
 
 const DAY_MS = 86_400_000
 
@@ -27,19 +24,42 @@ export interface ReviewItemStateRow {
   computed_at: string
 }
 
+/** The active personal FSRS weights, or the library defaults. */
+export function activeWeights(db: Db): number[] {
+  const row = get<{ params_json: string }>(db, "SELECT params_json FROM scheduler_params WHERE scheduler = 'fsrs' AND is_active = 1")
+  return row ? (JSON.parse(row.params_json) as { w: number[] }).w : [...default_w]
+}
+
+const schedulers = new Map<string, FSRS>()
+function schedulerFor(w: number[]): FSRS {
+  const key = JSON.stringify(w)
+  if (!schedulers.has(key)) schedulers.set(key, fsrs({ request_retention: DESIRED_RETENTION, w }))
+  return schedulers.get(key)!
+}
+
+export function schedulerVersion(db: Db): string {
+  const parameters = schedulerFor(activeWeights(db)).parameters
+  return `ts-fsrs ${FSRSVersion} params:${sha256(JSON.stringify(parameters)).slice(0, 12)}`
+}
+
 /** Replays rated reviews, oldest first, from an empty card. */
-export function replay(reviews: { rating: Rating; at: string }[]): Card | null {
+export function replay(reviews: { rating: Rating; at: string }[], w: number[] = [...default_w]): Card | null {
   if (!reviews.length) return null
+  const scheduler = schedulerFor(w)
   let card = createEmptyCard(new Date(reviews[0].at))
   for (const r of reviews) card = scheduler.next(card, new Date(r.at), r.rating as Grade).card
   return card
 }
 
 /** Probability of recall at `now`. */
-export function retrievability(state: Pick<ReviewItemStateRow, 'stability' | 'last_reviewed_at'>, now = new Date()): number {
+export function retrievability(
+  state: Pick<ReviewItemStateRow, 'stability' | 'last_reviewed_at'>,
+  now = new Date(),
+  w: readonly number[] = default_w,
+): number {
   if (!state.stability || !state.last_reviewed_at) return 0
   const elapsedDays = Math.max(0, (now.getTime() - new Date(state.last_reviewed_at).getTime()) / DAY_MS)
-  return forgetting_curve(scheduler.parameters.w, elapsedDays, state.stability)
+  return forgetting_curve(w, elapsedDays, state.stability)
 }
 
 /** Recomputes one item's schedule from its attempts. Items with no rated attempt have no state row. */
@@ -50,13 +70,13 @@ export function refreshSchedule(db: Db, reviewItemId: string): ReviewItemStateRo
      WHERE review_item_id = ? AND rating IS NOT NULL ORDER BY answered_at, id`,
     reviewItemId,
   )
-  const card = replay(reviews)
+  const card = replay(reviews, activeWeights(db))
   run(db, 'DELETE FROM review_item_state WHERE review_item_id = ?', reviewItemId)
   if (!card) return null
   const row: ReviewItemStateRow = {
     review_item_id: reviewItemId,
     scheduler: 'fsrs',
-    scheduler_version: SCHEDULER_VERSION,
+    scheduler_version: schedulerVersion(db),
     state: REVIEW_STATES[card.state as State],
     stability: card.stability,
     difficulty: card.difficulty,
@@ -97,7 +117,7 @@ export function rebuildSchedules(db: Db): number {
 
 /** Rebuilds only if a schedule was computed by another scheduler version. Run on start. */
 export function rebuildIfStale(db: Db): boolean {
-  const stale = all(db, 'SELECT 1 FROM review_item_state WHERE scheduler_version <> ? LIMIT 1', SCHEDULER_VERSION)
+  const stale = all(db, 'SELECT 1 FROM review_item_state WHERE scheduler_version <> ? LIMIT 1', schedulerVersion(db))
   if (!stale.length) return false
   rebuildSchedules(db)
   return true

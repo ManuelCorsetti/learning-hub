@@ -3,11 +3,12 @@ import { useCallback, useEffect, useState } from 'react'
 import type { PracticeData } from '../../../shared/api'
 import { api } from '../api'
 import { QuestionCard } from '../components/lesson/Questions'
+import { OptimiseButton } from '../components/OptimiseButton'
 import { useStudySession } from '../components/lesson/useStudySession'
 import { relativeTime } from '../components/status'
 import { lessonHref } from '../router'
 
-export function PracticePage() {
+export function PracticePage({ aiAvailable }: { aiAvailable: boolean }) {
   // The queue is loaded once per round, so answered items stay on screen until "Next".
   const [queue, setQueue] = useState<PracticeData | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -112,6 +113,13 @@ export function PracticePage() {
           )}
         </section>
       )}
+      <section>
+        <div className="section-head">
+          <h2>After a session</h2>
+          <span>Claude can read how you answered and suggest changes to your map, such as a missing prerequisite.</span>
+        </div>
+        <OptimiseButton aiAvailable={aiAvailable} />
+      </section>
     </>
   )
 }
