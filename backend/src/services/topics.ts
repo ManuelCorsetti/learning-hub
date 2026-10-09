@@ -1,10 +1,11 @@
 import type { TopicStatus } from '../../../shared/domain'
-import type { LinkView, TopicDetail, TopicListItem } from '../../../shared/api'
+import type { LinkView, SubtopicItem, TopicDetail, TopicListItem } from '../../../shared/api'
 import { all, get, run, tx, type Db } from '../db/connection'
 import { AppError, clean, conflict, newId, notFound, nowIso } from '../lib'
 import { getArea, requireLiveArea } from './areas'
 import { listEvents, recordEvent, type Ctx } from './events'
-import { linkProblem, normaliseLink, type LinkRow } from './links'
+import { listTopicLessons } from './lessons'
+import { linkProblem, normaliseLink, parentEdges, prerequisiteEdges, type LinkRow } from './links'
 import { measureTopics, statusInfo } from './status'
 
 export interface TopicRow {
@@ -41,6 +42,26 @@ function assertTitleFree(db: Db, title: string, exceptId: string | null = null):
     exceptId,
   )
   if (clash) throw conflict(`A topic called "${title}" already exists`)
+}
+
+/** The live parent of a sub-topic. */
+export function parentOf(db: Db, id: string): { id: string; title: string } | undefined {
+  return get(
+    db,
+    `SELECT p.id, p.title FROM topic_links l JOIN topics p ON p.id = l.to_topic_id AND p.archived_at IS NULL
+     WHERE l.from_topic_id = ? AND l.link_type = 'part_of'`,
+    id,
+  )
+}
+
+/** Live sub-topics of a topic. */
+export function childrenOf(db: Db, id: string): TopicRow[] {
+  return all<TopicRow>(
+    db,
+    `SELECT c.* FROM topic_links l JOIN topics c ON c.id = l.from_topic_id AND c.archived_at IS NULL
+     WHERE l.to_topic_id = ? AND l.link_type = 'part_of' ORDER BY lower(c.title)`,
+    id,
+  )
 }
 
 const areaLabel = (db: Db, areaId: string | null): string => (areaId ? (getArea(db, areaId)?.name ?? 'Unknown') : 'Inbox')
@@ -89,7 +110,18 @@ export function updateTopic(
     let areaId = topic.area_id
     if (patch.area_id !== undefined && patch.area_id !== topic.area_id) {
       if (patch.area_id) requireLiveArea(db, patch.area_id)
-      recordEvent(db, ctx, id, 'area_changed', areaLabel(db, topic.area_id), areaLabel(db, patch.area_id))
+      const parent = parentOf(db, id)
+      if (parent) {
+        throw conflict(`"${topic.title}" is a sub-topic of "${parent.title}". Move "${parent.title}" or remove the part-of link.`)
+      }
+      const from = areaLabel(db, topic.area_id)
+      const to = areaLabel(db, patch.area_id)
+      recordEvent(db, ctx, id, 'area_changed', from, to)
+      // Sub-topics live in their parent's area, so they move with it.
+      for (const child of childrenOf(db, id)) {
+        run(db, 'UPDATE topics SET area_id = ?, updated_at = ? WHERE id = ?', patch.area_id, nowIso(), child.id)
+        recordEvent(db, ctx, child.id, 'area_changed', from, to)
+      }
       areaId = patch.area_id
     }
     run(
@@ -191,7 +223,7 @@ export function restoreTopic(db: Db, ctx: Ctx, id: string): TopicRow {
 }
 
 /**
- * Merges `mergeId` into `keepId`: links, goals and resources move to the kept topic,
+ * Merges `mergeId` into `keepId`: links, goals, resources and lessons move to the kept topic,
  * and the merged topic is archived with merged_into_id. Links that would become
  * duplicates, self-links or loops are dropped.
  */
@@ -231,6 +263,7 @@ export function mergeTopics(db: Db, ctx: Ctx, keepId: string, mergeId: string): 
     )
     run(db, 'DELETE FROM topic_goals WHERE topic_id = ?', mergeId)
     run(db, 'UPDATE resources SET topic_id = ? WHERE topic_id = ?', keepId, mergeId)
+    run(db, 'UPDATE lessons SET topic_id = ? WHERE topic_id = ?', keepId, mergeId)
 
     const now = nowIso()
     run(db, 'UPDATE topics SET merged_into_id = ?, archived_at = ?, updated_at = ? WHERE id = ?', keepId, now, now, mergeId)
@@ -253,11 +286,13 @@ export function toListItems(db: Db, rows: TopicRow[]): TopicListItem[] {
     db,
     rows.map((r) => r.id),
   )
+  const parents = new Map(parentEdges(db))
   return rows.map((r) => ({
     id: r.id,
     title: r.title,
     summary: r.summary,
     area_id: r.area_id,
+    parent_id: parents.get(r.id) ?? null,
     status: statusInfo(r.status_override, r.status_override_note, measured.get(r.id)!),
     created_at: r.created_at,
   }))
@@ -276,10 +311,43 @@ export function listTopics(db: Db, areaId?: string | null): TopicListItem[] {
   return toListItems(db, rows)
 }
 
+/**
+ * A parent's sub-topics as a learning path: prerequisites between them first (ties by title).
+ * `next` marks the first one that is not solid and whose prerequisites are all solid.
+ */
+export function subtopicPath(db: Db, parentId: string): SubtopicItem[] {
+  const children = toListItems(db, childrenOf(db, parentId))
+  const ids = new Set(children.map((c) => c.id))
+  const edges = prerequisiteEdges(db)
+  const inside = edges.filter(([f, t]) => ids.has(f) && ids.has(t))
+  const ordered: TopicListItem[] = []
+  const remaining = [...children].sort((a, b) => a.title.localeCompare(b.title))
+  while (remaining.length) {
+    const i = remaining.findIndex((c) => !inside.some(([f, t]) => t === c.id && remaining.some((r) => r.id === f)))
+    ordered.push(...remaining.splice(i === -1 ? 0 : i, 1))
+  }
+  const prereqIds = (id: string) => edges.filter(([, t]) => t === id).map(([f]) => f)
+  const needed = [...new Set(children.flatMap((c) => prereqIds(c.id)))]
+  const solid = new Set(
+    toListItems(db, needed.map((p) => getTopic(db, p)!))
+      .filter((t) => t.status.effective === 'solid')
+      .map((t) => t.id),
+  )
+  const titles = new Map(children.map((c) => [c.id, c.title]))
+  let nextGiven = false
+  return ordered.map((c) => {
+    const prereqs = prereqIds(c.id)
+    const next = !nextGiven && c.status.effective !== 'solid' && prereqs.every((p) => solid.has(p))
+    if (next) nextGiven = true
+    return { ...c, next, prereqs: prereqs.filter((p) => titles.has(p)).map((p) => titles.get(p)!) }
+  })
+}
+
 export function getTopicDetail(db: Db, id: string): TopicDetail {
   const row = getTopic(db, id)
   if (!row) throw notFound('Topic')
   const [item] = toListItems(db, [row])
+  const measurement = measureTopics(db, [id]).get(id)!
   const area = row.area_id ? getArea(db, row.area_id) : undefined
 
   const links = all<LinkRow & { other_id: string; other_title: string; other_area: string | null }>(
@@ -322,5 +390,9 @@ export function getTopicDetail(db: Db, id: string): TopicDetail {
       id,
     ),
     events: listEvents(db, id),
+    measurement,
+    lessons: listTopicLessons(db, id),
+    parent: parentOf(db, id) ?? null,
+    subtopics: subtopicPath(db, id),
   }
 }

@@ -388,8 +388,8 @@ erDiagram
 | `goals` | 1 | Only `active` goals count towards Next up. | `status`: `active` · `achieved` · `dropped` |
 | `topic_goals` | 1 | Many-to-many join. | – |
 | `resources` | 1 | Needs at least one of `url` or `note`. | `kind`: `link` · `book` · `video` · `course` · `note` |
-| `ai_runs` | 1 | One row per logical call. `attempts_log` holds each try's raw output and validation error, which is the material for prompt tuning. | `task`: `capture` · `organise` · `next_up_why` · `generate_lesson` · `lesson_patch` · `optimise`. `outcome`: `ok` · `invalid` · `error` |
-| `proposals` | 1 | `target_type` + `target_id` is a loose reference with no foreign key. `area_id` / `topic_id` are real foreign keys used for scoping ("2 suggestions to review"). `applied_entity_id` records what accepting the proposal created. | `kind`: `create_topic` · `update_topic` · `move_topic` · `merge_topics` · `archive_topic` · `create_area` · `update_area` · `create_link` · `remove_link` · `lesson_patch` (P3). `status`: `pending` · `accepted` · `rejected` · `superseded` · `failed` |
+| `ai_runs` | 1 | One row per logical call. `attempts_log` holds each try's raw output and validation error, which is the material for prompt tuning. | `task`: `capture` · `organise` · `next_up_why` · `plan_lesson` · `generate_lesson` · `lesson_patch` · `optimise`. `model` is the model chosen in `settings` at call time. `outcome`: `ok` · `invalid` · `error` |
+| `proposals` | 1 | `target_type` + `target_id` is a loose reference with no foreign key. Payload v2: `create_topic` may set `parent_topic_id`, and accepting it also links the new topic under that parent. `area_id` / `topic_id` are real foreign keys used for scoping ("2 suggestions to review"). `applied_entity_id` records what accepting the proposal created. | `kind`: `create_topic` · `update_topic` · `move_topic` · `merge_topics` · `archive_topic` · `create_area` · `update_area` · `create_link` · `remove_link` · `lesson_patch` (P3). `status`: `pending` · `accepted` · `rejected` · `superseded` · `failed` |
 | `ai_text_cache` | 1 | Reused while `input_hash` (a hash of the facts the text was written from) is unchanged. | `purpose`: `next_up_why` |
 | `lessons` | 2 | One topic can have several lessons. | `origin`: `ai` · `user` · `imported_article` |
 | `lesson_versions` | 2 | Append-only. Rollback or patch = a new row with `based_on_version_id`. The latest version is the highest `version_no`. | `created_by`: `ai` · `user` |
@@ -397,6 +397,8 @@ erDiagram
 | `study_sessions` | 2 | Groups attempts. `lesson_version_id` is set only when `kind = lesson`. | `kind`: `lesson` · `review` · `placement` |
 | `attempts` | 2 | Immutable. `rating` is stored, not recomputed, so replaying attempts gives the same schedule even if the mapping rules change later. | `confidence`: 1 guessing · 2 fairly sure · 3 certain. `rating`: 1 Again · 2 Hard · 3 Good · 4 Easy |
 | `review_item_state` | 2 | **Derived cache.** Rebuild it by replaying attempts in time order through the scheduler named in `scheduler_version`. | `state`: `new` · `learning` · `review` · `relearning` |
+| `settings` | 2.5 | Key/value app settings: `model` (the Claude model id) and `profile` (the learner profile sent with every Claude call). | – |
+| `lesson_requests` | 2.5 | The Build lesson conversation: level, brief, planner turns and the latest plan. `lesson_id` is set once built. A working record, so `messages_json` grows while `status = open`. | `level`: `fundamentals` · `applied` · `advanced`. `status`: `open` · `built` · `abandoned` |
 | `chat_threads`, `chat_messages` | 3 | Co-author conversations. An assistant message may carry a `lesson_patch` proposal. | `role`: `user` · `assistant` |
 
 ### Business rules
@@ -410,6 +412,11 @@ erDiagram
    - at most one link of each type per ordered pair;
    - `related_to` is symmetric, so it is stored once with `from_topic_id < to_topic_id`;
    - `part_of` points child → parent, and a topic has at most one parent;
+   - the hierarchy is area › topic › sub-topic: a parent cannot itself be a
+     sub-topic, and a topic with sub-topics cannot become one (this also rules
+     out `part_of` loops);
+   - a sub-topic is in its parent's area: linking moves it there, moving the
+     parent moves its sub-topics;
    - `prerequisite_of` must not form a cycle. This is checked in the
      application before inserting.
 4. Merging B into A, in one transaction:
@@ -720,6 +727,30 @@ CREATE TABLE review_item_state (
   computed_at        TEXT NOT NULL
 );
 CREATE INDEX ix_review_item_state_due ON review_item_state (due_at);
+```
+
+### DDL — Phase 2.5
+
+```sql
+CREATE TABLE settings (
+  key         TEXT PRIMARY KEY,
+  value_json  TEXT NOT NULL CHECK (json_valid(value_json)),
+  updated_at  TEXT NOT NULL
+);
+
+CREATE TABLE lesson_requests (
+  id             TEXT PRIMARY KEY,
+  topic_id       TEXT NOT NULL REFERENCES topics (id),
+  level          TEXT,
+  brief          TEXT,
+  messages_json  TEXT NOT NULL CHECK (json_valid(messages_json)),          -- [{role, content}]
+  plan_json      TEXT CHECK (plan_json IS NULL OR json_valid(plan_json)),  -- latest plan from the planner
+  status         TEXT NOT NULL,
+  lesson_id      TEXT REFERENCES lessons (id),
+  created_at     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL
+);
+CREATE INDEX ix_lesson_requests_topic ON lesson_requests (topic_id, created_at);
 ```
 
 ### DDL — Phase 3

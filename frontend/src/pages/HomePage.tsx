@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { AreaSummary, HomeData, NextUpItem } from '../../../shared/api'
 import { api, useAction, useApi } from '../api'
 import { StatusBar, legendText } from '../components/status'
-import { areaHref, navigate } from '../router'
+import { areaHref, navigate, topicHref } from '../router'
 
 interface CaptureResult {
   created: number
@@ -120,7 +120,7 @@ function NextUp({ aiAvailable }: { aiAvailable: boolean }) {
       {data && !top.length && <p className="empty">Add a few topics and Next up will suggest where to start.</p>}
       <div className="grid">
         {top.map((item) => (
-          <a key={item.topic_id} className="card next-card" href={areaHref(item.area_id, item.topic_id)}>
+          <a key={item.topic_id} className="card next-card" href={topicHref(item.topic_id)}>
             <span className="card-label">{item.areaName ?? 'Inbox'}</span>
             <span className="score" title="Next up score">
               {item.score}

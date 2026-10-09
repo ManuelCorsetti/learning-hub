@@ -14,14 +14,16 @@ Personal learning map: TypeScript end to end (Node 22+, Hono API, React + Vite U
 - `npm test`: Vitest, in-memory database (`backend/test/`)
 - `npm run typecheck`: run after every change
 - `npm run ai:smoke`: one real Capture call against a throwaway database (costs money; needs `ANTHROPIC_API_KEY`)
+- `npm run ai:lesson [-- "Topic" [--brief "…"] | -- --questions]`: one real lesson generation (with a planner turn when `--brief` is given), printed and saved under `data/lesson-samples/` (costs money)
+- `npm run db:replay`: rebuild `review_item_state` from attempts
 - Set `DB_PATH=<scratch path>` to experiment without touching `data/learning-studio.db`
 
 ## Layout
 
-- `shared/`: enumerations (`domain.ts`), API types and Zod inputs (`api.ts`), proposal payloads. Used by both sides.
+- `shared/`: enumerations (`domain.ts`), API types and Zod inputs (`api.ts`), proposal payloads, lesson blocks and answers (`lessons.ts`). Used by both sides.
 - `backend/src/services/`: domain logic; each function takes `db` first. `backend/src/ai/`: Claude flows. `backend/src/app.ts`: routes.
 - `backend/src/db/migrations/`: numbered SQL files, applied on start. Add a new file; never edit an applied one.
-- `frontend/src/pages`, `frontend/src/components`; hash routes in `router.tsx`. Styles in one `styles.css` using the Studio tokens.
+- `frontend/src/pages`, `frontend/src/components` (lesson widgets and the diagram registry in `components/lesson/`); hash routes in `router.tsx`. Styles in one `styles.css` using the Studio tokens.
 - `prompts/*.txt`: system prompts, one per AI task.
 
 ## Rules
@@ -32,5 +34,6 @@ Personal learning map: TypeScript end to end (Node 22+, Hono API, React + Vite U
 - **Status is measured.** Never store a hand-entered progress or mastery value. Users can only set `status_override`.
 - **Archive, don't delete.** Record a `topic_events` row for every topic change, via `recordEvent()`.
 - Enumerations live in `shared/domain.ts`, not in SQL CHECK constraints.
+- SQL placeholders are plain `?` only. Numbered `?1` fails on Node 22.14's `node:sqlite` ("column index out of range"); repeat the argument instead.
 - Pin dependency versions exactly. Match the existing style: no semicolons, single quotes, 2-space indent, few comments.
 - Phase 2 and Phase 3 "stop for review" steps mean: stop and show the user the generated output before building further.

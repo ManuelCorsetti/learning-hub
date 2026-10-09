@@ -4,7 +4,7 @@ import { LINK_TYPES } from '../../../shared/domain'
 import type { ProposalDraft } from '../../../shared/proposals'
 import { all, type Db } from '../db/connection'
 import { newId } from '../lib'
-import { linkProblem, normaliseLink, type Edge } from '../services/links'
+import { linkProblem, normaliseLink, parentEdges, parentProblem, type Edge } from '../services/links'
 import { createProposals, supersedePending } from '../services/proposals'
 import { listTopics } from '../services/topics'
 import { callStructured } from './client'
@@ -32,6 +32,17 @@ export const OrganiseOutput = z.object({
     }),
   ),
   removed_links: z.array(z.object({ link_id: z.string(), rationale: z.string() })),
+  groupings: z.array(
+    z.object({
+      parent_topic_id: z.string().nullable().describe('An existing topic to group under, or null'),
+      new_parent: z
+        .object({ title: z.string().min(1).max(120), summary: z.string(), area_id: z.string().nullable() })
+        .nullable()
+        .describe('A new umbrella topic to create, or null'),
+      child_topic_ids: z.array(z.string()).min(1),
+      rationale: z.string(),
+    }),
+  ),
 })
 export type OrganiseOutput = z.infer<typeof OrganiseOutput>
 
@@ -40,12 +51,14 @@ function organiseContext(db: Db) {
     db,
     'SELECT id, name, summary FROM areas WHERE archived_at IS NULL ORDER BY position',
   )
+  const parentOf = new Map(parentEdges(db))
   const topics = listTopics(db).map((t) => ({
     id: t.id,
     title: t.title,
     summary: t.summary,
     area_id: t.area_id,
     status: t.status.effective,
+    parent_topic_id: parentOf.get(t.id) ?? null,
   }))
   const links = all<{ id: string; from_topic_id: string; to_topic_id: string; link_type: string }>(
     db,
@@ -104,10 +117,45 @@ export function checkOrganise(db: Db, out: OrganiseOutput, ctx: ReturnType<typeo
     else if (l.link_type === 'prerequisite_of') proposed.push([f, t])
   }
   for (const r of out.removed_links) if (!linkIds.has(r.link_id)) problems.push(`removed_links: unknown link_id "${r.link_id}"`)
+
+  // Groupings are checked together with the part_of links above, so a batch cannot nest deeper than one level.
+  const parents: Edge[] = [
+    ...parentEdges(db),
+    ...out.new_links.filter((l) => l.link_type === 'part_of').map((l): Edge => [l.from_topic_id, l.to_topic_id]),
+  ]
+  const titles = new Set(ctx.topics.map((t) => t.title.toLowerCase()))
+  const grouped = new Set<string>()
+  out.groupings.forEach((g, i) => {
+    const where = `groupings[${i}]`
+    if (Boolean(g.parent_topic_id) === Boolean(g.new_parent)) {
+      problems.push(`${where} must set exactly one of parent_topic_id or new_parent`)
+      return
+    }
+    if (g.parent_topic_id && !topicById.has(g.parent_topic_id)) problems.push(`${where}: unknown parent_topic_id`)
+    if (g.new_parent) {
+      if (titles.has(g.new_parent.title.toLowerCase())) problems.push(`${where}: a topic called "${g.new_parent.title}" already exists`)
+      titles.add(g.new_parent.title.toLowerCase())
+      if (g.new_parent.area_id && !areaIds.has(g.new_parent.area_id)) problems.push(`${where}: unknown area_id`)
+      if (g.child_topic_ids.length < 2) problems.push(`${where}: a new parent needs at least two sub-topics`)
+    }
+    const parentId = g.parent_topic_id ?? `new-parent-${i}`
+    for (const child of g.child_topic_ids) {
+      const name = topicById.get(child)?.title ?? child
+      if (!topicById.has(child)) problems.push(`${where}: unknown child topic id "${child}"`)
+      else if (grouped.has(child)) problems.push(`${where}: "${name}" is grouped twice`)
+      else if (child === parentId) problems.push(`${where}: "${name}" cannot be its own parent`)
+      else {
+        const problem = parentProblem(parents, child, parentId)
+        if (problem) problems.push(`${where}: "${name}": ${problem}`)
+        else parents.push([child, parentId])
+      }
+      grouped.add(child)
+    }
+  })
   return problems
 }
 
-export function organiseDrafts(out: OrganiseOutput): ProposalDraft[] {
+export function organiseDrafts(out: OrganiseOutput, areaOf: (topicId: string) => string | null = () => null): ProposalDraft[] {
   const drafts: ProposalDraft[] = []
   const newAreas = new Map<string, { proposalId: string; areaId: string }>()
   for (const a of out.new_areas) {
@@ -157,6 +205,35 @@ export function organiseDrafts(out: OrganiseOutput): ProposalDraft[] {
   for (const r of out.removed_links) {
     drafts.push({ id: newId(), kind: 'remove_link', payload: { link_id: r.link_id }, rationale: r.rationale })
   }
+  for (const g of out.groupings) {
+    let parentId = g.parent_topic_id
+    let dependsOn: string | null = null
+    if (g.new_parent) {
+      parentId = newId()
+      dependsOn = newId()
+      drafts.push({
+        id: dependsOn,
+        kind: 'create_topic',
+        payload: {
+          id: parentId,
+          title: g.new_parent.title,
+          summary: g.new_parent.summary || null,
+          why_i_care: null,
+          area_id: g.new_parent.area_id ?? areaOf(g.child_topic_ids[0]),
+        },
+        rationale: g.rationale,
+      })
+    }
+    for (const child of g.child_topic_ids) {
+      drafts.push({
+        id: newId(),
+        kind: 'create_link',
+        payload: { id: newId(), from_topic_id: child, to_topic_id: parentId!, link_type: 'part_of' },
+        rationale: g.rationale,
+        depends_on_id: dependsOn,
+      })
+    }
+  }
   return drafts
 }
 
@@ -172,7 +249,7 @@ export async function runOrganise(db: Db): Promise<{ runId: string; created: num
     effort: 'high',
   })
   const superseded = supersedePending(db, 'organise', runId)
-  const drafts = organiseDrafts(result)
+  const drafts = organiseDrafts(result, (id) => ctx.topics.find((t) => t.id === id)?.area_id ?? null)
   createProposals(db, runId, drafts)
   return { runId, created: drafts.length, superseded }
 }

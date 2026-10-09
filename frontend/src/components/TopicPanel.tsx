@@ -1,9 +1,17 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { RESOURCE_KINDS, STATUS_LABELS, type ResourceKind, type TopicStatus } from '../../../shared/domain'
-import type { GoalView, HomeData, LinkView, TopicDetail, TopicEventView, TopicListItem } from '../../../shared/api'
+import { LESSON_LEVEL_LABELS, RESOURCE_KINDS, STATUS_LABELS, type ResourceKind, type TopicStatus } from '../../../shared/domain'
+import type {
+  GoalView,
+  HomeData,
+  LinkView,
+  TopicDetail,
+  TopicEventView,
+  TopicListItem,
+} from '../../../shared/api'
 import { api, useAction, useApi } from '../api'
-import { areaHref } from '../router'
-import { STATUS_ORDER, formatDate, masteryText } from './status'
+import { areaHref, lessonHref, topicHref } from '../router'
+import { BuildLessonDialog } from './BuildLessonDialog'
+import { STATUS_ORDER, formatDate, masteryText, percent } from './status'
 
 export function TopicPanel({ topicId, onClose }: { topicId: string; onClose: () => void }) {
   const { data: topic, error } = useApi<TopicDetail>(`/topics/${topicId}`)
@@ -19,12 +27,20 @@ export function TopicPanel({ topicId, onClose }: { topicId: string; onClose: () 
       <div className="panel-backdrop" onClick={onClose} />
       <aside className="panel" aria-label="Topic details">
         <div className="panel-head">
-          <span className="eyebrow">{topic ? (topic.area?.name ?? 'Inbox') : 'Topic'}</span>
+          <span className="eyebrow">
+            {topic ? (topic.area?.name ?? 'Inbox') : 'Topic'}
+            {topic?.parent && ` › ${topic.parent.title}`}
+          </span>
           <button className="icon-btn close" onClick={onClose} aria-label="Close">
             ×
           </button>
         </div>
         {error && <p className="error">{error}</p>}
+        {topic && (
+          <a className="btn small" href={topicHref(topic.id)} style={{ marginBottom: 14 }}>
+            Open topic page →
+          </a>
+        )}
         {topic && <TopicBody key={topic.id} topic={topic} />}
       </aside>
     </>
@@ -41,6 +57,7 @@ function TopicBody({ topic }: { topic: TopicDetail }) {
       ) : (
         <>
           <Status topic={topic} />
+          <Lessons topic={topic} />
           <Links topic={topic} />
           <Goals topic={topic} />
           <Resources topic={topic} />
@@ -107,7 +124,7 @@ function Details({ topic }: { topic: TopicDetail }) {
   )
 }
 
-function Status({ topic }: { topic: TopicDetail }) {
+export function Status({ topic }: { topic: TopicDetail }) {
   const [note, setNote] = useState(topic.status.overrideNote ?? '')
   const { busy, error, run } = useAction()
   const set = (status: TopicStatus, withNote = note) =>
@@ -151,6 +168,59 @@ function Status({ topic }: { topic: TopicDetail }) {
   )
 }
 
+export const ORIGIN_LABELS = { ai: 'by Claude', user: 'yours', imported_article: 'imported article' } as const
+
+export function Lessons({ topic }: { topic: TopicDetail }) {
+  const { data: home } = useApi<HomeData>('/home')
+  const [building, setBuilding] = useState(false)
+  const ai = home?.aiAvailable ?? false
+  const m = topic.measurement
+  return (
+    <section>
+      <h3>Lessons</h3>
+      {topic.lessons.length === 0 && <p className="small muted">No lesson yet. Build one to learn and get tested.</p>}
+      <ul className="items">
+        {topic.lessons.map((l) => (
+          <li key={l.id}>
+            <span className="grow">
+              <a href={lessonHref(l.id)}>{l.title}</a>
+              <div className="small muted">
+                v{l.version_no} · {l.level ? `${LESSON_LEVEL_LABELS[l.level]} · ` : ''}
+                {ORIGIN_LABELS[l.origin]} ·{' '}
+                {l.questionCount ? `${l.questionCount} question${l.questionCount === 1 ? '' : 's'}` : 'no questions yet'}
+              </div>
+            </span>
+          </li>
+        ))}
+      </ul>
+      {m.mastery !== null && (
+        <p className="measure">
+          {topic.subtopics.length > 0 && 'Includes its sub-topics. '}
+          {percent(m.coverage!)} of questions tested · recall {m.retention === null ? 'not measured' : percent(m.retention)}
+          {m.reviewsDue > 0 && (
+            <>
+              {' · '}
+              <a href="#/practice">
+                {m.reviewsDue} review{m.reviewsDue === 1 ? '' : 's'} due
+              </a>
+            </>
+          )}
+        </p>
+      )}
+      <button
+        className="btn small"
+        style={{ marginTop: 10 }}
+        disabled={!ai}
+        onClick={() => setBuilding(true)}
+        title={ai ? 'Plan a lesson with Claude, then build it' : 'Set ANTHROPIC_API_KEY to build lessons'}
+      >
+        ✦ Build lesson
+      </button>
+      {building && <BuildLessonDialog topic={topic} onClose={() => setBuilding(false)} />}
+    </section>
+  )
+}
+
 const LINK_CHOICES = {
   needs: { label: 'Needs first', type: 'prerequisite_of', thisIs: 'to' },
   unlocks: { label: 'Prerequisite of', type: 'prerequisite_of', thisIs: 'from' },
@@ -165,7 +235,7 @@ function linkLabel(link: LinkView): string {
   return link.direction === 'out' ? 'Part of' : 'Contains'
 }
 
-function Links({ topic }: { topic: TopicDetail }) {
+export function Links({ topic }: { topic: TopicDetail }) {
   const { data: topics } = useApi<TopicListItem[]>('/topics')
   const [choice, setChoice] = useState<keyof typeof LINK_CHOICES>('needs')
   const [other, setOther] = useState('')
@@ -222,7 +292,7 @@ function Links({ topic }: { topic: TopicDetail }) {
   )
 }
 
-function Goals({ topic }: { topic: TopicDetail }) {
+export function Goals({ topic }: { topic: TopicDetail }) {
   const { data: goals } = useApi<GoalView[]>('/goals')
   const [goalId, setGoalId] = useState('')
   const { busy, error, run } = useAction()
@@ -270,7 +340,7 @@ function Goals({ topic }: { topic: TopicDetail }) {
   )
 }
 
-function Resources({ topic }: { topic: TopicDetail }) {
+export function Resources({ topic }: { topic: TopicDetail }) {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<{ kind: ResourceKind; title: string; url: string; note: string }>({
     kind: 'link',
@@ -350,7 +420,7 @@ function Manage({ topic }: { topic: TopicDetail }) {
   const move = (areaId: string) => run(() => api.patch(`/topics/${topic.id}`, { area_id: areaId || null }))
   const merge = async () => {
     const other = topics?.find((t) => t.id === mergeId)
-    if (!other || !confirm(`Merge "${other.title}" into "${topic.title}"? Its links, goals and resources move here.`)) return
+    if (!other || !confirm(`Merge "${other.title}" into "${topic.title}"? Its links, goals, resources and lessons move here.`)) return
     if (await run(() => api.post(`/topics/${topic.id}/merge`, { merge_topic_id: mergeId }))) setMergeId('')
   }
   const archive = () => {
@@ -448,7 +518,7 @@ function describeEvent(e: TopicEventView): string {
   }
 }
 
-function History({ events }: { events: TopicEventView[] }) {
+export function History({ events }: { events: TopicEventView[] }) {
   return (
     <section>
       <h3>History</h3>

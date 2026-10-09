@@ -7,10 +7,31 @@ Follows on from [phase-1-plan.md](phase-1-plan.md) and uses the tables in
 
 - **Phase 1 is built** (build steps 1–9). Its prompt-tuning reviews (steps 6
   and 7) still need to happen on real notes.
-- **Phase 2 is next**, starting at build step 10 below. Phase 3 comes after
-  Phase 2 is in use.
+- **Phase 2 is built** (build steps 10–18). Its prompt review (step 10) still
+  needs to happen: run `npm run ai:lesson` (and `npm run ai:lesson -- --questions`
+  for the imported article) and tune `prompts/lesson_generator.txt`.
+- **Phase 2.5 is built** (see below): topic hierarchy, topic pages, Settings
+  (model switch and learner profile) and the Build lesson conversation. Its new
+  prompt, `prompts/lesson_planner.txt`, needs a review on real topics:
+  `npm run ai:lesson -- "Topic" --brief "…"`.
+- **Phase 3 is next**, starting at build step 19, once Phase 2 is in use.
 
-Where Phase 2 plugs into the existing code:
+Where Phase 2 lives:
+
+| Piece | Where |
+|---|---|
+| Block, lesson and answer schemas, lesson rules | `shared/lessons.ts` |
+| Migration | `backend/src/db/migrations/0002_phase2.sql` |
+| Versions and review items | `backend/src/services/lessons.ts` (`createLesson`, `addVersion`) |
+| Article import | `backend/src/services/articles.ts`, run on server start |
+| Generation | `backend/src/ai/lessons.ts`, `prompts/lesson_generator.txt`, `backend/scripts/generate-lesson.ts` |
+| Grading and rating | `backend/src/services/grading.ts` |
+| Scheduler (`ts-fsrs` 5.4.2) | `backend/src/services/scheduler.ts`. An item's state is always the replay of its rated attempts; a change of library or parameters is rebuilt on start |
+| Attempts and Practice queue | `backend/src/services/practice.ts` |
+| Mastery | `measureTopics()` in `backend/src/services/status.ts` |
+| UI | `frontend/src/pages/LessonPage.tsx`, `PracticePage.tsx`, `frontend/src/components/lesson/` |
+
+Where Phase 2 was planned to plug into the Phase 1 code:
 
 | Need | Where |
 |---|---|
@@ -116,7 +137,7 @@ types**: the original 7 plus 2 that the existing article format needs.
 | `quiz_mcq` | `id`, `question`, `options` (exactly 4), `correct_index` (0–3), `pitfall_note` | exact |
 | `quiz_true_false` | `id`, `statement`, `answer`, `pitfall_note` | exact |
 | `fill_in_blank` | `id`, `sentence` (contains `___`), `acceptable_answers` (≥ 1) | case-insensitive, trimmed |
-| `code_challenge` | `id`, `language`, `snippet`, `expected_answer`, `hint` | normalised text compare, never executed |
+| `code_challenge` | `id`, `language`, `question`, `snippet`, `expected_answer`, `hint` | normalised text compare (case, whitespace, spaces around punctuation and a trailing `;` ignored), never executed. `question` was added during the build: the snippet alone does not say what to work out |
 | `ordering` | `id`, `prompt`, `items_shuffled`, `correct_order` | score = share of items in the correct position |
 | `project_prompt` | `id`, `description`, `success_criteria` (≥ 1) | self-ticked checklist. Logged, **not scheduled**, not part of mastery |
 
@@ -189,13 +210,78 @@ types**: the original 7 plus 2 that the existing article format needs.
 
 ---
 
+# Phase 2.5 — Structure, profile and planned lessons
+
+Added after using Phase 2: lessons felt generic, and Capture produced five flat
+dbt topics where one subject with sub-topics was meant.
+
+## Topic hierarchy
+
+- The map has three levels: **area › topic › sub-topic**. A sub-topic is a topic
+  with a `part_of` link to its parent; no new table.
+- Rules (data-model rule 3, enforced in `parentProblem()`):
+  - a topic has at most one parent;
+  - a parent cannot itself be a sub-topic, and a topic with sub-topics cannot
+    become a sub-topic. This also rules out `part_of` loops;
+  - a sub-topic lives in its parent's area. Linking moves it there; moving the
+    parent moves its sub-topics; moving a sub-topic on its own is refused.
+- Sub-topics can be linked as prerequisites of each other. That sets their order
+  on the parent's **learning path**; *Next* is the first sub-topic that is not
+  solid and whose prerequisites are solid.
+- A parent's mastery and status **combine its own lessons with its sub-topics'**.
+  Next up suggests the sub-topics, not the parent.
+- Capture can propose a new umbrella topic with sub-topics (or put new topics
+  under an existing one): `create_topic` payload v2 has `parent_topic_id`.
+  Organise can propose `groupings` under an existing or new parent.
+- Tags are deliberately not added. Revisit only if a grouping is needed that the
+  hierarchy and links cannot express (e.g. for non-tech learning).
+
+## Navigation
+
+- Topic page `#/topics/:id`: learning path (for parents), lessons, and the panel
+  sections (status, resources, links, goals, history) alongside.
+- Breadcrumbs on area, topic and lesson pages: Map › Area › Topic › Sub-topic ›
+  Lesson. The side panel stays for quick edits from the list and graph.
+
+## Settings
+
+- **Model**: Opus 5.5 or Sonnet 5.5 for every AI feature, stored in `settings`.
+  `LEARNING_MODEL` stays the default. Every `ai_runs` row records the model used.
+- **Profile**: about me, tools and stack, goals, how I like to learn. Sent with
+  every Claude call as a second system block, after the task prompt, and logged
+  in `ai_runs.request_json`.
+
+## Build lesson conversation
+
+1. Choose a level (*Fundamentals*, *Applied to my context*, *Advanced*, or let
+   Claude decide). Levels are guidance; order between lessons comes from
+   prerequisites.
+2. Write a brief. **Plan with Claude** runs the planner (`plan_lesson` task,
+   `prompts/lesson_planner.txt`): it checks the brief against the profile, the
+   topic, its place on the path and the lessons already written for the topic,
+   its parent and its prerequisites. It asks up to three questions or says it is
+   ready, and always shows its current plan (title, outline, examples).
+3. Answer, or **Build anyway** at any point. **Skip planning and build** goes
+   straight to writing.
+4. The writer gets the level, brief, conversation and agreed plan, plus the
+   digest of existing lessons so it builds on them instead of repeating them.
+- The conversation is kept in `lesson_requests` with the lesson it produced.
+  The planner uses the same model as everything else, at `medium` effort.
+
 # Phase 3 — Co-authoring and the optimise loop
 
 This needs both earlier phases: lessons to edit and attempts to learn from.
 
 ## Features
 
-1. **Co-author mode**.
+1. **Notes that edit lessons** *(do first)*.
+   - On a lesson, or on one block, write a note: "too abstract, use a BigQuery
+     MERGE example", "I already know snapshots, go deeper on retention".
+   - Claude proposes a new version as a `lesson_patch` proposal, shown as a
+     diff, including which questions would restart their schedule.
+   - Accept saves the next version; reject changes nothing. Notes are kept and
+     sent with future lessons for the topic.
+2. **Co-author mode**.
    - A split-screen lesson page: the lesson on the left, chat with the agent on
      the right (`chat_threads`, `chat_messages`).
    - Example requests: "make this harder", "add a trick question about X",
@@ -211,7 +297,7 @@ This needs both earlier phases: lessons to edit and attempts to learn from.
      - a question that tests something different gets a new id, so a new
        schedule starts;
      - the diff view shows which blocks will have their schedule reset.
-2. **Optimise loop**.
+3. **Optimise loop**.
    - After a lesson or a review session, the agent reads the signals:
      - confidently-wrong attempts;
      - items with many lapses or high difficulty;
@@ -222,16 +308,16 @@ This needs both earlier phases: lessons to edit and attempts to learn from.
      - "Confidently wrong on 3 decorator questions. Add a prerequisite topic on
        closures?"
      - "These two topics overlap heavily. Merge them?"
-3. **Placement test ("test out")**.
+4. **Placement test ("test out")**.
    - A short generated quiz (a `placement` study session) for a topic marked
      *solid (self-assessed)*.
    - Passing turns the self-assessment into measured mastery.
-4. **Personal scheduler parameters**.
+5. **Personal scheduler parameters**.
    - Once there are enough attempts (several hundred reviews), fit FSRS
      parameters from your own history.
    - Store them in `scheduler_params` and replay to rebuild
      `review_item_state`.
-5. **Question variants** *(optional)*.
+6. **Question variants** *(optional)*.
    - Have the AI write alternative wordings of a review item, so reviews test
      the idea rather than memory of the wording.
    - This would add a `review_item_variants` table, with attempts referencing
@@ -240,6 +326,8 @@ This needs both earlier phases: lessons to edit and attempts to learn from.
 ## Build order (continues)
 
 19. `lesson_patch` proposal kind, diff view, apply as a new version, rollback.
+    Notes on a lesson or block produce these patches. **Stop for review**: the
+    patch prompt and diff format.
 20. Co-author chat UI (reuses proposals and versioning). Phase 3 migration for
     the chat tables.
 21. Optimise loop: analyse attempts → map change proposals.
@@ -265,4 +353,11 @@ This needs both earlier phases: lessons to edit and attempts to learn from.
   prerequisites in Next up, or only a measured one? (Phase 1 counts it.)
 - **Review cap**: should a session have a daily cap on reviews?
 - **Lesson design**: is a design needed for the lesson and review pages, or
-  are the existing article page styles enough?
+  are the existing article page styles enough? (Phase 2 reuses the v0.1 article
+  layout.)
+- **Retention right after a wrong answer**: retention is the recall probability
+  *now*, which FSRS puts near 100 % just after any review, right or wrong. So
+  mastery reads high straight after a session with mistakes, and only decays
+  over time. Derived status stays *learning* because those items are back in
+  the learning steps. Should mastery also discount items in `learning` /
+  `relearning`?

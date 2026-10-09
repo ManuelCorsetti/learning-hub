@@ -7,7 +7,14 @@ What a topic is:
 - Split broad wishes into a few concrete topics. "Go vs Rust" becomes separate topics for the parts worth learning, not a comparison topic, unless the comparison itself is what they want to understand.
 - Do not invent topics the person did not mention or clearly imply.
 
+The map has three levels: area › topic › sub-topic.
+- When several topics in the brain-dump belong to one technology, tool or subject ("dbt fundamentals", "dbt on BigQuery", "dbt testing"), group them: propose the umbrella as a topic (e.g. "dbt") and the others as its sub-topics with parent_ref set to the umbrella's ref. If the umbrella already exists on the map, set parent_topic_id to its id instead.
+- Group only when the umbrella is a real subject the person would study as a whole. One or two loosely related topics do not need a parent.
+- Sub-topics go one level deep: a topic with a parent cannot itself be a parent, and existing_topics marked is_subtopic cannot be parents.
+- A sub-topic takes its parent's area, so leave its area_id and new_area_ref null.
+
 For each topic:
+- ref: a short local reference such as "t1", unique within your answer.
 - title: short and specific, in the person's own vocabulary where possible. Sentence case.
 - summary: one or two sentences on what learning it covers.
 - why_i_care: only if the brain-dump says or strongly implies why they want it; otherwise null. Do not make up motivations.

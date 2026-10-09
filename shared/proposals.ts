@@ -1,9 +1,10 @@
-// Proposal payloads, version 1. A payload is stored as JSON with payload_version,
-// so a later version can be added without breaking rows written by this one.
+// Proposal payloads. A payload is stored as JSON with payload_version, so a later version
+// can be added without breaking rows written by an earlier one.
+// v2: create_topic gains an optional parent_topic_id (the new topic becomes its sub-topic).
 import { z } from 'zod'
 import { LINK_TYPES, type ProposalKind } from './domain'
 
-export const PAYLOAD_VERSION = 1
+export const PAYLOAD_VERSION = 2
 
 const id = z.string().min(1)
 const nullableText = z.string().nullable()
@@ -17,6 +18,7 @@ export const ProposalPayloads = {
     summary: nullableText,
     why_i_care: nullableText,
     area_id: id.nullable(),
+    parent_topic_id: id.nullable().optional(),
   }),
   update_topic: z.object({ topic_id: id, title: nullableText, summary: nullableText, why_i_care: nullableText }),
   move_topic: z.object({ topic_id: id, area_id: id.nullable() }),

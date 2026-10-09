@@ -2,21 +2,28 @@ import { Hono, type Context } from 'hono'
 import { z } from 'zod'
 import {
   AcceptManyInput,
+  AttemptInput,
   CaptureInput,
   CreateAreaInput,
   CreateGoalInput,
   CreateLinkInput,
   CreateResourceInput,
   CreateTopicInput,
+  LessonRequestReplyInput,
   LinkGoalInput,
   MergeTopicInput,
   SetStatusInput,
+  StartLessonRequestInput,
+  StartSessionInput,
   UpdateAreaInput,
+  UpdateSettingsInput,
   UpdateGoalInput,
   UpdateTopicInput,
 } from '../../shared/api'
 import { aiConfigured } from './ai/client'
 import { runCapture } from './ai/capture'
+import { planLessonTurn } from './ai/lessonPlanner'
+import { buildFromRequest, generateLesson, generateQuestions } from './ai/lessons'
 import { explainNextUp } from './ai/nextUpWhy'
 import { runOrganise } from './ai/organise'
 import type { Db } from './db/connection'
@@ -24,9 +31,13 @@ import { AppError } from './lib'
 import { archiveArea, createArea, updateArea } from './services/areas'
 import { USER } from './services/events'
 import { addResource, archiveResource, createGoal, linkGoal, listGoals, unlinkGoal, updateGoal } from './services/goals'
+import { createLessonRequest, getLessonRequest } from './services/lessonRequests'
+import { getLessonView } from './services/lessons'
 import { createLink, removeLink } from './services/links'
 import { getAreaDetail, getAreaGraph, getHome } from './services/map'
 import { rankNextUp } from './services/nextUp'
+import { completeSession, practiceQueue, recordAttempt, startSession } from './services/practice'
+import { getSettings, updateSettings } from './services/settings'
 import {
   acceptMany,
   acceptProposal,
@@ -70,6 +81,8 @@ export function createApp(db: Db, options: { aiAvailable?: () => boolean } = {})
 
   app.get('/health', (c) => c.json({ ok: true }))
   app.get('/home', (c) => c.json(getHome(db, aiAvailable())))
+  app.get('/settings', (c) => c.json(getSettings(db)))
+  app.patch('/settings', async (c) => c.json(updateSettings(db, await body(c, UpdateSettingsInput))))
 
   // Next up
   app.get('/next-up', (c) => c.json(rankNextUp(db)))
@@ -170,6 +183,46 @@ export function createApp(db: Db, options: { aiAvailable?: () => boolean } = {})
     return c.json({ ok: true })
   })
   app.post('/runs/:id/accept', (c) => c.json(acceptRun(db, c.req.param('id'))))
+
+  // Lessons, attempts and Practice
+  app.post('/topics/:id/lessons', async (c) => {
+    requireAi()
+    const { lessonId } = await generateLesson(db, c.req.param('id'))
+    return c.json(getLessonView(db, lessonId), 201)
+  })
+  app.post('/topics/:id/lesson-requests', async (c) => {
+    const input = await body(c, StartLessonRequestInput)
+    const request = createLessonRequest(db, c.req.param('id'), input)
+    // Without AI the dialog still opens; planning simply needs a key.
+    if (!aiAvailable()) return c.json(request, 201)
+    return c.json(await planLessonTurn(db, request.id), 201)
+  })
+  app.get('/lesson-requests/:id', (c) => c.json(getLessonRequest(db, c.req.param('id'))))
+  app.post('/lesson-requests/:id/reply', async (c) => {
+    requireAi()
+    return c.json(await planLessonTurn(db, c.req.param('id'), (await body(c, LessonRequestReplyInput)).message))
+  })
+  app.post('/lesson-requests/:id/build', async (c) => {
+    requireAi()
+    const { lessonId } = await buildFromRequest(db, c.req.param('id'))
+    return c.json(getLessonView(db, lessonId), 201)
+  })
+  app.get('/lessons/:id', (c) => c.json(getLessonView(db, c.req.param('id'))))
+  app.post('/lessons/:id/questions', async (c) => {
+    requireAi()
+    await generateQuestions(db, c.req.param('id'))
+    return c.json(getLessonView(db, c.req.param('id')))
+  })
+  app.post('/sessions', async (c) => {
+    const input = await body(c, StartSessionInput)
+    return c.json({ id: startSession(db, input.kind, input.lesson_version_id ?? null) }, 201)
+  })
+  app.post('/sessions/:id/complete', (c) => {
+    completeSession(db, c.req.param('id'))
+    return c.json({ ok: true })
+  })
+  app.post('/attempts', async (c) => c.json(recordAttempt(db, await body(c, AttemptInput)), 201))
+  app.get('/practice', (c) => c.json(practiceQueue(db)))
 
   return app
 }

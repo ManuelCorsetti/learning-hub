@@ -5,6 +5,8 @@ import { all, get, type Db } from '../db/connection'
 import type { LinkType } from '../../../shared/domain'
 import type { AreaRow } from './areas'
 import { requireLiveArea } from './areas'
+import { reviewsDue } from './practice'
+import { currentModel } from './settings'
 import { pendingCount, pendingCountsByArea } from './proposals'
 import { listTopics, resolveOverrides, toListItems, type TopicRow } from './topics'
 
@@ -46,7 +48,9 @@ export function getHome(db: Db, aiAvailable: boolean): HomeData {
     inboxCount,
     topicCount: areas.reduce((sum, a) => sum + a.topicCount, 0) + inboxCount,
     pendingProposals: pendingCount(db),
+    reviewsDue: reviewsDue(db),
     aiAvailable,
+    model: currentModel(db),
   }
 }
 

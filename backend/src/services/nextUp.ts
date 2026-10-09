@@ -2,12 +2,12 @@
 import type { NextUpItem } from '../../../shared/api'
 import { all, get, run, type Db } from '../db/connection'
 import { newId, nowIso, sha256 } from '../lib'
-import { prerequisiteEdges } from './links'
+import { parentEdges, prerequisiteEdges } from './links'
 import { listTopics } from './topics'
 
 export const NEXT_UP_EXPLAINED = 3
 
-const WEIGHTS = { prereqReady: 40, perUnlock: 8, maxUnlocks: 5, goal: 25, learning: 15 }
+const WEIGHTS = { prereqReady: 40, perUnlock: 8, maxUnlocks: 5, goal: 25, learning: 15, reviewsDue: 20 }
 
 export function rankNextUp(db: Db, limit = 6): NextUpItem[] {
   const topics = listTopics(db)
@@ -28,6 +28,8 @@ export function rankNextUp(db: Db, limit = 6): NextUpItem[] {
   )
 
   const isSolid = (id: string) => byId.get(id)?.status.effective === 'solid'
+  // A parent groups its sub-topics; Next up suggests the sub-topics themselves.
+  const parents = new Set(parentEdges(db).map(([, parent]) => parent))
 
   /** Every topic this one eventually unlocks, excluding those already solid. */
   const unlocks = (id: string): string[] => {
@@ -43,7 +45,9 @@ export function rankNextUp(db: Db, limit = 6): NextUpItem[] {
   }
 
   const items = topics
-    .filter((t) => t.status.effective !== 'solid')
+    // Solid topics drop out of Next up until their reviews come due.
+    .filter((t) => !parents.has(t.id))
+    .filter((t) => t.status.effective !== 'solid' || t.status.reviewsDue > 0)
     .map<NextUpItem>((t) => {
       const prereqs = (prereqsOf.get(t.id) ?? []).filter((p) => byId.has(p))
       const unmet = prereqs.filter((p) => !isSolid(p))
@@ -51,11 +55,13 @@ export function rankNextUp(db: Db, limit = 6): NextUpItem[] {
       const unlocked = unlocks(t.id)
       const goals = goalRows.filter((g) => g.topic_id === t.id).map((g) => g.title)
       const learning = t.status.effective === 'learning'
+      const reviewsDue = t.status.reviewsDue
       const score =
         WEIGHTS.prereqReady * prereqReady +
         WEIGHTS.perUnlock * Math.min(unlocked.length, WEIGHTS.maxUnlocks) +
         (goals.length ? WEIGHTS.goal : 0) +
-        (learning ? WEIGHTS.learning : 0)
+        (learning ? WEIGHTS.learning : 0) +
+        (reviewsDue ? WEIGHTS.reviewsDue : 0)
       const factors = {
         prereqs: prereqs.map((p) => byId.get(p)!.title),
         prereqReady,
@@ -63,6 +69,7 @@ export function rankNextUp(db: Db, limit = 6): NextUpItem[] {
         unlocks: unlocked.map((d) => byId.get(d)!.title),
         goals,
         learning,
+        reviewsDue,
       }
       return {
         topic_id: t.id,
@@ -90,6 +97,7 @@ function list(names: string[], max = 2): string {
 
 export function fallbackWhy(f: NextUpItem['factors']): string {
   const parts: string[] = []
+  if (f.reviewsDue) parts.push(`${f.reviewsDue} review${f.reviewsDue === 1 ? '' : 's'} due.`)
   if (f.learning) parts.push('Already in progress.')
   if (f.unlocks.length) parts.push(`Unlocks ${list(f.unlocks)}.`)
   if (f.goals.length) parts.push(`Serves your goal "${f.goals[0]}".`)

@@ -142,7 +142,11 @@ function apply(db: Db, row: ProposalRow): string {
     }
     case 'create_topic': {
       const p = payloadOf({ ...row, kind: 'create_topic' })
-      return createTopic(db, ctx, p).id
+      const topic = createTopic(db, ctx, p)
+      if (p.parent_topic_id) {
+        createLink(db, { from_topic_id: topic.id, to_topic_id: p.parent_topic_id, link_type: 'part_of' }, ctx)
+      }
+      return topic.id
     }
     case 'update_topic': {
       const p = payloadOf({ ...row, kind: 'update_topic' })
@@ -168,7 +172,7 @@ function apply(db: Db, row: ProposalRow): string {
     }
     case 'create_link': {
       const p = payloadOf({ ...row, kind: 'create_link' })
-      return createLink(db, { ...p, rationale: row.rationale, source_proposal_id: row.id })
+      return createLink(db, { ...p, rationale: row.rationale, source_proposal_id: row.id }, ctx)
     }
     case 'remove_link': {
       const p = payloadOf({ ...row, kind: 'remove_link' })
@@ -305,7 +309,8 @@ function describe(db: Db, row: ProposalRow): { description: string; detail: stri
     }
     case 'create_topic': {
       const p = payloadOf({ ...row, kind: 'create_topic' })
-      return { description: `Add "${p.title}" to ${areaName(db, p.area_id)}`, detail: p.summary }
+      const under = p.parent_topic_id ? ` under ${topicName(db, p.parent_topic_id)}` : ''
+      return { description: `Add "${p.title}" to ${areaName(db, p.area_id)}${under}`, detail: p.summary }
     }
     case 'update_topic': {
       const p = payloadOf({ ...row, kind: 'update_topic' })
