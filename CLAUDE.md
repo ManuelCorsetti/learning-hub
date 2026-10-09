@@ -34,5 +34,6 @@ Personal learning map: TypeScript end to end (Node 22+, Hono API, React + Vite U
 - **Status is measured.** Never store a hand-entered progress or mastery value. Users can only set `status_override`.
 - **Archive, don't delete.** Record a `topic_events` row for every topic change, via `recordEvent()`.
 - Enumerations live in `shared/domain.ts`, not in SQL CHECK constraints.
+- SQL placeholders are plain `?` only. Numbered `?1` fails on Node 22.14's `node:sqlite` ("column index out of range"); repeat the argument instead.
 - Pin dependency versions exactly. Match the existing style: no semicolons, single quotes, 2-space indent, few comments.
 - Phase 2 and Phase 3 "stop for review" steps mean: stop and show the user the generated output before building further.

@@ -60,9 +60,10 @@ export function measureTopics(db: Db, topicIds: string[], now = new Date()): Map
        LEFT JOIN topics p ON p.id = pl.to_topic_id AND p.archived_at IS NULL
        LEFT JOIN review_item_state s ON s.review_item_id = ri.id
        WHERE ri.is_scheduled = 1 AND ri.retired_at IS NULL
-         AND (l.topic_id IN (SELECT value FROM json_each(?1))
-           OR (p.id IN (SELECT value FROM json_each(?1))
+         AND (l.topic_id IN (SELECT value FROM json_each(?))
+           OR (p.id IN (SELECT value FROM json_each(?))
              AND l.topic_id IN (SELECT id FROM topics WHERE archived_at IS NULL)))`,
+      JSON.stringify(topicIds),
       JSON.stringify(topicIds),
     )
     const nowIso = now.toISOString()
