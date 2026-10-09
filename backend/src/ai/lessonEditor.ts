@@ -14,48 +14,55 @@ import { createProposals } from '../services/proposals'
 import { callStructured } from './client'
 import { topicContext } from './lessons'
 
-const after = z.string().nullable().describe('id of the block this goes after; null for the very start')
+// Kept flat on purpose: the block union appears exactly once and is never nullable, as in
+// GeneratedLesson. Nesting it inside a union of ops compiled to a grammar the API rejected as
+// too large.
+const EditorChange = z.object({
+  op: z.enum(['replace', 'add']),
+  block_id: z.string().nullable().describe('replace: id of the block to replace; add: null'),
+  after_block_id: z.string().nullable().describe('add: id of the block this goes after, null for the very start; replace: null'),
+  keeps_schedule: z
+    .boolean()
+    .describe('replace of a question: true if it still tests the same thing (reworded), false if it tests something different; otherwise false'),
+  block: GeneratedBlock,
+})
+type EditorChange = z.infer<typeof EditorChange>
 
 export const EditorOutput = z.object({
   reply: z.string().min(1).max(2000).describe('What you say to the person: short, plain, no preamble'),
-  patch: z
-    .object({
-      change_note: z.string().min(1).max(200).describe('One line for the version history, e.g. "BigQuery MERGE example in block 3"'),
-      ops: z
-        .array(
-          z.discriminatedUnion('op', [
-            z.object({
-              op: z.literal('replace'),
-              block_id: z.string(),
-              keeps_schedule: z
-                .boolean()
-                .describe('Questions only: true if the new question still tests the same thing (reworded), false if it tests something different'),
-              block: GeneratedBlock,
-            }),
-            z.object({ op: z.literal('add'), after_block_id: after, block: GeneratedBlock }),
-            z.object({ op: z.literal('remove'), block_id: z.string() }),
-            z.object({ op: z.literal('move'), block_id: z.string(), after_block_id: after }),
-          ]),
-        )
-        .min(1),
-    })
-    .nullable()
-    .describe('null when the note needs no change to the lesson'),
+  change_note: z.string().max(200).describe('One line for the version history; empty when nothing changes'),
+  changes: z.array(EditorChange).describe('Blocks replaced or added, applied in order'),
+  moves: z
+    .array(z.object({ block_id: z.string(), after_block_id: z.string().nullable() }))
+    .describe('Applied after changes; after_block_id null = the very start'),
+  removals: z.array(z.string()).describe('Ids of blocks to remove, applied last'),
 })
 export type EditorOutput = z.infer<typeof EditorOutput>
 
+export const hasEdits = (out: EditorOutput) => out.changes.length + out.moves.length + out.removals.length > 0
+
+/** A replace needs the id of the block it replaces. */
+export function changeProblems(changes: EditorChange[]): string[] {
+  return changes.flatMap((c, n) => (c.op === 'replace' && !c.block_id ? [`changes[${n}] (replace): block_id is required`] : []))
+}
+
 /**
- * Turns Claude's operations into stored ones: a replaced block keeps its id unless it is a
- * question that now tests something different; added blocks get new ids.
+ * Turns Claude's edit into stored operations (changes, then moves, then removals): a replaced
+ * block keeps its id unless it is a question that now tests something different; added blocks
+ * get new ids. Call changeProblems first.
  */
-export function normaliseOps(base: Block[], ops: NonNullable<EditorOutput['patch']>['ops'], newBlockId: (type: string) => string): LessonPatchOp[] {
-  return ops.map((op): LessonPatchOp => {
-    if (op.op === 'remove' || op.op === 'move') return op
-    if (op.op === 'add') return { op: 'add', after_block_id: op.after_block_id, block: { ...op.block, id: newBlockId(op.block.type) } as Block }
-    const was = base.find((b) => b.id === op.block_id)
-    const keep = !was || isTeaching(op.block) || (op.keeps_schedule && was.type === op.block.type)
-    return { op: 'replace', block_id: op.block_id, block: { ...op.block, id: keep ? op.block_id : newBlockId(op.block.type) } as Block }
+export function normaliseOps(base: Block[], out: Pick<EditorOutput, 'changes' | 'moves' | 'removals'>, newBlockId: (type: string) => string): LessonPatchOp[] {
+  const changes = out.changes.map((c): LessonPatchOp => {
+    if (c.op === 'add') return { op: 'add', after_block_id: c.after_block_id, block: { ...c.block, id: newBlockId(c.block.type) } as Block }
+    const was = base.find((b) => b.id === c.block_id)
+    const keep = !was || isTeaching(c.block) || (c.keeps_schedule && was.type === c.block.type)
+    return { op: 'replace', block_id: c.block_id!, block: { ...c.block, id: keep ? c.block_id! : newBlockId(c.block.type) } as Block }
   })
+  return [
+    ...changes,
+    ...out.moves.map((m): LessonPatchOp => ({ op: 'move', block_id: m.block_id, after_block_id: m.after_block_id })),
+    ...out.removals.map((id): LessonPatchOp => ({ op: 'remove', block_id: id })),
+  ]
 }
 
 const randomBlockId = (type: string) => `${type}-${randomBytes(4).toString('hex')}`
@@ -106,12 +113,19 @@ export async function sendLessonMessage(
       conversation: history,
       note: { message: input.message, about_block_id: input.block_id ?? null },
     },
-    check: (out) => (out.patch ? patchProblems(blocks, normaliseOps(blocks, out.patch.ops, (t) => `${t}-check${n++}`), { requireProject }) : []),
+    check: (out) => {
+      if (!hasEdits(out)) return []
+      const problems = changeProblems(out.changes)
+      if (!out.change_note.trim()) problems.push('change_note is required when the lesson changes')
+      return problems.length
+        ? problems
+        : patchProblems(blocks, normaliseOps(blocks, out, (t) => `${t}-check${n++}`), { requireProject })
+    },
     effort: 'high',
   })
 
   let proposalId: string | null = null
-  if (result.patch) {
+  if (hasEdits(result)) {
     proposalId = newId()
     createProposals(db, runId, [
       {
@@ -120,8 +134,8 @@ export async function sendLessonMessage(
         payload: {
           lesson_id: lessonId,
           base_version_id: version.id,
-          change_note: result.patch.change_note,
-          ops: normaliseOps(blocks, result.patch.ops, randomBlockId),
+          change_note: result.change_note,
+          ops: normaliseOps(blocks, result, randomBlockId),
         },
         rationale: result.reply,
       },

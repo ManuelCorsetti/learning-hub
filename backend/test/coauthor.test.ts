@@ -1,7 +1,7 @@
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { describe, expect, it } from 'vitest'
 import type { Block } from '../../shared/lessons'
-import { EditorOutput, normaliseOps } from '../src/ai/lessonEditor'
+import { changeProblems, EditorOutput, normaliseOps } from '../src/ai/lessonEditor'
 import { createApp } from '../src/app'
 import { all, get, openDb, type Db } from '../src/db/connection'
 import { newId } from '../src/lib'
@@ -62,20 +62,33 @@ describe('lesson patches', () => {
     let n = 0
     const ops = normaliseOps(
       base,
-      [
-        { op: 'replace', block_id: 'q1', keeps_schedule: true, block: { ...tf('q1', 'Reworded.'), id: null } },
-        { op: 'replace', block_id: 'q2', keeps_schedule: false, block: { ...tf('q2', 'Different.'), id: null } },
-        { op: 'replace', block_id: 'c1', keeps_schedule: false, block: { ...concept('c1'), id: null } },
-        { op: 'add', after_block_id: 'q2', block: { ...tf('x'), id: null } },
-      ],
+      {
+        changes: [
+          { op: 'replace', block_id: 'q1', after_block_id: null, keeps_schedule: true, block: { ...tf('q1', 'Reworded.'), id: null } },
+          { op: 'replace', block_id: 'q2', after_block_id: null, keeps_schedule: false, block: { ...tf('q2', 'Different.'), id: null } },
+          { op: 'replace', block_id: 'c1', after_block_id: null, keeps_schedule: false, block: { ...concept('c1'), id: null } },
+          { op: 'add', block_id: null, after_block_id: 'q2', keeps_schedule: false, block: { ...tf('x'), id: null } },
+        ],
+        moves: [{ block_id: 'c2', after_block_id: null }],
+        removals: ['q1'],
+      },
       (type) => `${type}-new${n++}`,
     )
-    expect(ops.map((o) => ('block' in o ? o.block.id : null))).toEqual(['q1', 'quiz_true_false-new0', 'c1', 'quiz_true_false-new1'])
+    expect(ops.map((o) => ('block' in o ? o.block.id : `${o.op}:${o.block_id}`))).toEqual([
+      'q1',
+      'quiz_true_false-new0',
+      'c1',
+      'quiz_true_false-new1',
+      'move:c2',
+      'remove:q1',
+    ])
     expect(describePatch(base, ops).map((c) => `${c.kind}:${c.schedule}`)).toEqual([
       'changed:kept',
       'changed:reset',
       'changed:null',
       'added:new',
+      'moved:null',
+      'removed:retired',
     ])
   })
 
@@ -135,7 +148,19 @@ describe('lesson patches', () => {
     expect(send.status).toBe(503)
   })
 
-  it('has a valid structured-output schema', () => {
-    expect(() => betaZodOutputFormat(EditorOutput)).not.toThrow()
+  it('has a structured-output schema with the block union once, not nested in another union', () => {
+    // The nested version was rejected by the API: "The compiled grammar is too large".
+    const unions: number[] = []
+    const walk = (o: unknown) => {
+      if (!o || typeof o !== 'object') return
+      const anyOf = (o as { anyOf?: unknown[] }).anyOf
+      if (anyOf) unions.push(anyOf.length)
+      Object.values(o).forEach(walk)
+    }
+    walk(betaZodOutputFormat(EditorOutput).schema)
+    expect(unions.filter((n) => n > 2)).toEqual([9]) // the block types; everything else is "x or null"
+    expect(changeProblems([{ op: 'replace', block_id: null, after_block_id: null, keeps_schedule: true, block: { ...tf('x'), id: null } }])).toEqual([
+      'changes[0] (replace): block_id is required',
+    ])
   })
 })
