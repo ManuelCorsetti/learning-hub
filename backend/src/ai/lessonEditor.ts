@@ -14,14 +14,32 @@ import { createProposals } from '../services/proposals'
 import { callStructured } from './client'
 import { topicContext } from './lessons'
 
+// The edited blocks travel as a JSON string, validated here against the block schemas (with the
+// usual retry). Every attempt to constrain them in the output grammar itself was rejected by the
+// API as "compiled grammar is too large".
 export const EditorOutput = z.object({
   reply: z.string().min(1).max(2000).describe('What you say to the person: short, plain, no preamble'),
   change_note: z.string().max(200).describe('One line for the version history; empty when nothing changes'),
-  blocks: z
-    .array(EditedBlock)
-    .describe('The whole lesson after your edit, in order, using "keep" for unchanged blocks; empty when nothing changes'),
+  blocks_json: z
+    .string()
+    .describe('JSON array: the whole lesson after your edit, in order, with {"type":"keep","id":"…"} for unchanged blocks. "[]" when nothing changes.'),
 })
 export type EditorOutput = z.infer<typeof EditorOutput>
+
+/** Parses and validates blocks_json. */
+export function parseEditedBlocks(json: string): { blocks: EditedBlock[]; problems: string[] } {
+  if (!json.trim()) return { blocks: [], problems: [] }
+  let raw: unknown
+  try {
+    raw = JSON.parse(json)
+  } catch {
+    return { blocks: [], problems: ['blocks_json is not valid JSON'] }
+  }
+  const parsed = z.array(EditedBlock).safeParse(raw)
+  return parsed.success
+    ? { blocks: parsed.data, problems: [] }
+    : { blocks: [], problems: [`blocks_json: ${z.prettifyError(parsed.error)}`] }
+}
 
 /**
  * Turns the edited block list into patch operations against the current version: removals for
@@ -102,8 +120,6 @@ export async function sendLessonMessage(
   const history = listMessages(db, lessonId)
     .slice(-20)
     .map((m) => ({ role: m.role, content: m.content, block_id: m.block_id, edit: m.patch && { change_note: m.patch.change_note, status: m.patch.status } }))
-  addMessage(db, lessonId, { role: 'user', content: input.message, block_id: input.block_id })
-
   const requireProject = lesson.origin !== 'placement'
   let n = 0
   const { runId, result } = await callStructured(db, {
@@ -118,8 +134,10 @@ export async function sendLessonMessage(
       note: { message: input.message, about_block_id: input.block_id ?? null },
     },
     check: (out) => {
-      if (!out.blocks.length) return []
-      const { ops, problems } = editToOps(blocks, out.blocks, (t) => `${t}-check${n++}`)
+      const edited = parseEditedBlocks(out.blocks_json)
+      if (edited.problems.length) return edited.problems
+      if (!edited.blocks.length) return []
+      const { ops, problems } = editToOps(blocks, edited.blocks, (t) => `${t}-check${n++}`)
       if (problems.length) return problems
       if (!ops.length) return ['the edited lesson is identical to the current one; return an empty blocks list when nothing changes']
       if (!out.change_note.trim()) return ['change_note is required when the lesson changes']
@@ -128,8 +146,10 @@ export async function sendLessonMessage(
     effort: 'high',
   })
 
+  // The note is saved with the reply, so a failed call leaves no orphan note; the panel keeps the text to resend.
+  addMessage(db, lessonId, { role: 'user', content: input.message, block_id: input.block_id })
   let proposalId: string | null = null
-  const edit = editToOps(blocks, result.blocks, randomBlockId)
+  const edit = editToOps(blocks, parseEditedBlocks(result.blocks_json).blocks, randomBlockId)
   if (edit.ops.length) {
     proposalId = newId()
     createProposals(db, runId, [

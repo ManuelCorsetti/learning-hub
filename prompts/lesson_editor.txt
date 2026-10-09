@@ -9,10 +9,10 @@ You receive JSON with:
 
 Return:
 - reply: one to four short sentences. Say what you changed and why, or answer the question if the note is a question. No greetings, no restating the note.
-- When the note needs no change (a question you can answer, thanks, or a request you should push back on): change_note is empty and blocks is an empty list.
+- When the note needs no change (a question you can answer, thanks, or a request you should push back on): change_note is empty and blocks_json is "[]".
 - Otherwise:
   - change_note: one line for the version history.
-  - blocks: the whole lesson after your edit, in order.
+  - blocks_json: a JSON array (as a string) of the whole lesson after your edit, in order. Each element is a block object with the same fields as in lesson.blocks.
     - For every block you leave unchanged, write {"type": "keep", "id": "<its id>"}. Do not copy unchanged blocks out in full.
     - For a block you change, write the full new block. Give it the block's current id when it replaces that block; for a question, keep the id only when it still tests the same thing (rewording, clearer options, a fixed ambiguity), so its review schedule carries on.
     - For a new block, or a question that now tests something different (which starts a fresh review schedule), set id to null.

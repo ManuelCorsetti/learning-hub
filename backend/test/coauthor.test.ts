@@ -1,7 +1,7 @@
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { describe, expect, it } from 'vitest'
-import { GeneratedLesson, type Block } from '../../shared/lessons'
-import { editToOps, EditorOutput } from '../src/ai/lessonEditor'
+import type { Block } from '../../shared/lessons'
+import { editToOps, EditorOutput, parseEditedBlocks } from '../src/ai/lessonEditor'
 import { createApp } from '../src/app'
 import { all, get, openDb, type Db } from '../src/db/connection'
 import { newId } from '../src/lib'
@@ -160,21 +160,15 @@ describe('lesson patches', () => {
     expect(send.status).toBe(503)
   })
 
-  it('has a structured-output schema shaped like GeneratedLesson: one union of block types, not nested', () => {
-    // A union of ops containing the block union was rejected by the API: "The compiled grammar is too large".
-    const unions = (schema: unknown) => {
-      const found: number[] = []
-      const walk = (o: unknown) => {
-        if (!o || typeof o !== 'object') return
-        const anyOf = (o as { anyOf?: unknown[] }).anyOf
-        if (anyOf) found.push(anyOf.length)
-        Object.values(o).forEach(walk)
-      }
-      walk(schema)
-      return found.filter((x) => x > 2)
-    }
-    expect(unions(betaZodOutputFormat(EditorOutput).schema)).toEqual([10]) // 9 block types + keep
-    expect(unions(betaZodOutputFormat(GeneratedLesson).schema)).toEqual([9])
+  it('keeps the output grammar tiny and validates the edited blocks itself', () => {
+    // Constraining the blocks in the grammar was rejected by the API: "The compiled grammar is too large".
+    expect(JSON.stringify(betaZodOutputFormat(EditorOutput).schema)).not.toContain('anyOf')
+    const keep = JSON.stringify([{ type: 'keep', id: 'c1' }, { type: 'quiz_true_false', id: null, statement: 'S', answer: true, pitfall_note: 'P' }])
+    expect(parseEditedBlocks(keep)).toMatchObject({ problems: [], blocks: [{ type: 'keep' }, { type: 'quiz_true_false' }] })
+    expect(parseEditedBlocks('[]')).toEqual({ blocks: [], problems: [] })
+    expect(parseEditedBlocks('{oops').problems).toEqual(['blocks_json is not valid JSON'])
+    expect(parseEditedBlocks(JSON.stringify([{ type: 'quiz_mcq', id: null, question: 'Q', options: ['a'], correct_index: 0, pitfall_note: 'p' }])).problems[0]).toMatch(/blocks_json/)
   })
+
 
 })
