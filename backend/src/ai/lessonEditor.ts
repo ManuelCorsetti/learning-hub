@@ -3,66 +3,70 @@
 import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
 import type { ChatMessageView } from '../../../shared/api'
-import { GeneratedBlock, isTeaching, type Block } from '../../../shared/lessons'
+import { EditedBlock, type Block } from '../../../shared/lessons'
 import type { LessonPatchOp } from '../../../shared/proposals'
 import { all, type Db } from '../db/connection'
 import { AppError, newId } from '../lib'
 import { addMessage, listMessages, supersedeLessonPatches } from '../services/coauthor'
-import { patchProblems } from '../services/lessonPatch'
+import { applyPatch, patchProblems } from '../services/lessonPatch'
 import { latestVersion, requireLesson, versionBlocks } from '../services/lessons'
 import { createProposals } from '../services/proposals'
 import { callStructured } from './client'
 import { topicContext } from './lessons'
 
-// Kept flat on purpose: the block union appears exactly once and is never nullable, as in
-// GeneratedLesson. Nesting it inside a union of ops compiled to a grammar the API rejected as
-// too large.
-const EditorChange = z.object({
-  op: z.enum(['replace', 'add']),
-  block_id: z.string().nullable().describe('replace: id of the block to replace; add: null'),
-  after_block_id: z.string().nullable().describe('add: id of the block this goes after, null for the very start; replace: null'),
-  keeps_schedule: z
-    .boolean()
-    .describe('replace of a question: true if it still tests the same thing (reworded), false if it tests something different; otherwise false'),
-  block: GeneratedBlock,
-})
-type EditorChange = z.infer<typeof EditorChange>
-
 export const EditorOutput = z.object({
   reply: z.string().min(1).max(2000).describe('What you say to the person: short, plain, no preamble'),
   change_note: z.string().max(200).describe('One line for the version history; empty when nothing changes'),
-  changes: z.array(EditorChange).describe('Blocks replaced or added, applied in order'),
-  moves: z
-    .array(z.object({ block_id: z.string(), after_block_id: z.string().nullable() }))
-    .describe('Applied after changes; after_block_id null = the very start'),
-  removals: z.array(z.string()).describe('Ids of blocks to remove, applied last'),
+  blocks: z
+    .array(EditedBlock)
+    .describe('The whole lesson after your edit, in order, using "keep" for unchanged blocks; empty when nothing changes'),
 })
 export type EditorOutput = z.infer<typeof EditorOutput>
 
-export const hasEdits = (out: EditorOutput) => out.changes.length + out.moves.length + out.removals.length > 0
-
-/** A replace needs the id of the block it replaces. */
-export function changeProblems(changes: EditorChange[]): string[] {
-  return changes.flatMap((c, n) => (c.op === 'replace' && !c.block_id ? [`changes[${n}] (replace): block_id is required`] : []))
-}
-
 /**
- * Turns Claude's edit into stored operations (changes, then moves, then removals): a replaced
- * block keeps its id unless it is a question that now tests something different; added blocks
- * get new ids. Call changeProblems first.
+ * Turns the edited block list into patch operations against the current version: removals for
+ * blocks left out, replacements for changed blocks that keep their id, additions for new blocks,
+ * and moves where the order changed. A question keeps its review schedule only if it keeps its id.
  */
-export function normaliseOps(base: Block[], out: Pick<EditorOutput, 'changes' | 'moves' | 'removals'>, newBlockId: (type: string) => string): LessonPatchOp[] {
-  const changes = out.changes.map((c): LessonPatchOp => {
-    if (c.op === 'add') return { op: 'add', after_block_id: c.after_block_id, block: { ...c.block, id: newBlockId(c.block.type) } as Block }
-    const was = base.find((b) => b.id === c.block_id)
-    const keep = !was || isTeaching(c.block) || (c.keeps_schedule && was.type === c.block.type)
-    return { op: 'replace', block_id: c.block_id!, block: { ...c.block, id: keep ? c.block_id! : newBlockId(c.block.type) } as Block }
+export function editToOps(base: Block[], edited: EditedBlock[], newBlockId: (type: string) => string): { ops: LessonPatchOp[]; problems: string[] } {
+  const problems: string[] = []
+  const byId = new Map(base.map((b) => [b.id, b]))
+  const used = new Set<string>()
+  const replaces: LessonPatchOp[] = []
+  const target: Block[] = []
+  edited.forEach((e, n) => {
+    if (e.type === 'keep') {
+      const kept = byId.get(e.id)
+      if (!kept) return void problems.push(`blocks[${n}] (keep): "${e.id}" is not a block of the current lesson`)
+      if (used.has(e.id)) return void problems.push(`blocks[${n}]: block "${e.id}" appears twice`)
+      used.add(e.id)
+      return void target.push(kept)
+    }
+    const was = e.id ? byId.get(e.id) : undefined
+    if (was && was.type === e.type && !used.has(was.id)) {
+      used.add(was.id)
+      const block = { ...e, id: was.id } as Block
+      if (JSON.stringify(block) !== JSON.stringify(was)) replaces.push({ op: 'replace', block_id: was.id, block })
+      return void target.push(block)
+    }
+    target.push({ ...e, id: newBlockId(e.type) } as Block)
   })
-  return [
-    ...changes,
-    ...out.moves.map((m): LessonPatchOp => ({ op: 'move', block_id: m.block_id, after_block_id: m.after_block_id })),
-    ...out.removals.map((id): LessonPatchOp => ({ op: 'remove', block_id: id })),
-  ]
+  const removes: LessonPatchOp[] = base.filter((b) => !used.has(b.id)).map((b) => ({ op: 'remove', block_id: b.id }))
+  // Walk the target order and add or move whatever is not already after the block it should follow.
+  const placed: LessonPatchOp[] = []
+  const current = applyPatch(base, [...removes, ...replaces]).blocks.map((b) => b.id)
+  target.forEach((b, i) => {
+    const after = i === 0 ? null : target[i - 1].id
+    const at = current.indexOf(b.id)
+    if (at !== -1 && (at === 0 ? null : current[at - 1]) === after) return
+    if (at === -1) placed.push({ op: 'add', after_block_id: after, block: b })
+    else {
+      current.splice(at, 1)
+      placed.push({ op: 'move', block_id: b.id, after_block_id: after })
+    }
+    current.splice(after === null ? 0 : current.indexOf(after) + 1, 0, b.id)
+  })
+  return { ops: [...replaces, ...placed, ...removes], problems }
 }
 
 const randomBlockId = (type: string) => `${type}-${randomBytes(4).toString('hex')}`
@@ -114,18 +118,19 @@ export async function sendLessonMessage(
       note: { message: input.message, about_block_id: input.block_id ?? null },
     },
     check: (out) => {
-      if (!hasEdits(out)) return []
-      const problems = changeProblems(out.changes)
-      if (!out.change_note.trim()) problems.push('change_note is required when the lesson changes')
-      return problems.length
-        ? problems
-        : patchProblems(blocks, normaliseOps(blocks, out, (t) => `${t}-check${n++}`), { requireProject })
+      if (!out.blocks.length) return []
+      const { ops, problems } = editToOps(blocks, out.blocks, (t) => `${t}-check${n++}`)
+      if (problems.length) return problems
+      if (!ops.length) return ['the edited lesson is identical to the current one; return an empty blocks list when nothing changes']
+      if (!out.change_note.trim()) return ['change_note is required when the lesson changes']
+      return patchProblems(blocks, ops, { requireProject })
     },
     effort: 'high',
   })
 
   let proposalId: string | null = null
-  if (hasEdits(result)) {
+  const edit = editToOps(blocks, result.blocks, randomBlockId)
+  if (edit.ops.length) {
     proposalId = newId()
     createProposals(db, runId, [
       {
@@ -135,7 +140,7 @@ export async function sendLessonMessage(
           lesson_id: lessonId,
           base_version_id: version.id,
           change_note: result.change_note,
-          ops: normaliseOps(blocks, result, randomBlockId),
+          ops: edit.ops,
         },
         rationale: result.reply,
       },

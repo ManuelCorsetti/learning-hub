@@ -16,6 +16,8 @@ Personal learning map: TypeScript end to end (Node 22+, Hono API, React + Vite U
 - `npm run ai:smoke`: one real Capture call against a throwaway database (costs money; needs `ANTHROPIC_API_KEY`)
 - `npm run ai:lesson [-- "Topic" [--brief "…"] | -- --questions]`: one real lesson generation (with a planner turn when `--brief` is given), printed and saved under `data/lesson-samples/` (costs money)
 - `npm run db:replay`: rebuild `review_item_state` from attempts
+- `npm run ai:runs [-- <run id>]`: recent Claude calls from `ai_runs` (also in Settings → Recent Claude calls); the dev server prints one `[ai]` line per call
+- Structured-output schemas: keep one union of block types per schema, never nested in another union (the API rejects the compiled grammar as too large)
 - Set `DB_PATH=<scratch path>` to experiment without touching `data/learning-studio.db`
 
 ## Layout

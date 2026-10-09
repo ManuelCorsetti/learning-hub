@@ -18,6 +18,7 @@
     "db:replay": "tsx --disable-warning=ExperimentalWarning backend/scripts/replay.ts",
     "ai:smoke": "tsx --disable-warning=ExperimentalWarning backend/scripts/ai-smoke.ts",
     "ai:lesson": "tsx --disable-warning=ExperimentalWarning backend/scripts/generate-lesson.ts",
+    "ai:runs": "tsx --disable-warning=ExperimentalWarning backend/scripts/ai-runs.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

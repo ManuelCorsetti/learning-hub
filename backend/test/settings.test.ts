@@ -23,4 +23,17 @@ describe('settings', () => {
     const home = await (await app.request('/api/home')).json()
     expect(home.model).toBe('claude-sonnet-5-5')
   })
+
+  it('lists Claude calls with the error of a failed one', async () => {
+    const db = openDb(':memory:')
+    db.prepare(
+      `INSERT INTO ai_runs (id, task, prompt_name, prompt_hash, model, request_json, attempts_json, outcome, attempt_count, created_at)
+       VALUES ('r1', 'lesson_patch', 'lesson_editor', 'x', 'claude-opus-5-5', '{"input":1}', ?, 'error', 1, ?)`,
+    ).run(JSON.stringify([{ raw_output: null, stop_reason: null, validation_errors: ['API error 400 grammar too large'] }]), new Date().toISOString())
+    const app = createApp(db, { aiAvailable: () => false })
+    const runs = await (await app.request('/api/ai-runs')).json()
+    expect(runs).toMatchObject([{ id: 'r1', task: 'lesson_patch', outcome: 'error', error: 'API error 400 grammar too large' }])
+    const detail = await (await app.request('/api/ai-runs/r1')).json()
+    expect(detail).toMatchObject({ prompt_name: 'lesson_editor', request: { input: 1 } })
+  })
 })

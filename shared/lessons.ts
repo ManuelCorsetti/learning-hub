@@ -95,6 +95,21 @@ const generated = blockSchemas(z.string().nullable().describe('Leave null; the s
 /** Any block as Claude writes it: id may be null. */
 export const GeneratedBlock = z.discriminatedUnion('type', [...generated.teaching, ...generated.questions, generated.project_prompt])
 export type GeneratedBlock = z.infer<typeof GeneratedBlock>
+/**
+ * A lesson as Claude edits it: the full block list, where "keep" stands for an unchanged block.
+ * Same shape as GeneratedLesson (one union of block types, never nested), which the API accepts.
+ */
+const edited = blockSchemas(
+  z.string().nullable().describe('The current id when this block replaces one and, for a question, still tests the same thing; null for a new block'),
+)
+export const EditedBlock = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('keep'), id: text.describe('id of an unchanged block of the current lesson') }),
+  ...edited.teaching,
+  ...edited.questions,
+  edited.project_prompt,
+])
+export type EditedBlock = z.infer<typeof EditedBlock>
+
 /** A question as Claude writes it (no project). */
 export const GeneratedQuestion = z.discriminatedUnion('type', [...generated.questions])
 export const GeneratedLesson = z.object({ title: text, blocks: z.array(GeneratedBlock) })

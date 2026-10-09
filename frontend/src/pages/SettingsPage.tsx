@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import type { Profile, SchedulerView, SettingsView } from '../../../shared/api'
 import { MODEL_LABELS, type Model } from '../../../shared/domain'
 import { api, useAction, useApi } from '../api'
+import { AiRuns } from '../components/AiRuns'
 import { formatDate } from '../components/status'
 
 const FIELDS: { key: keyof Profile; label: string; hint: string }[] = [
@@ -47,6 +48,7 @@ export function SettingsPage() {
       <ModelChoice settings={data} />
       <ProfileForm key={JSON.stringify(data.profile)} profile={data.profile} />
       <Scheduler />
+      <AiRuns />
     </>
   )
 }

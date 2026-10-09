@@ -331,8 +331,11 @@ This needs both earlier phases: lessons to edit and attempts to learn from.
 - **Notes and co-author are one panel.** On a lesson, **Notes & edits** opens a
   thread (one per lesson). **Note** on any block starts a note about that block.
   Claude (`lesson_patch` task, `prompts/lesson_editor.txt`) replies, and when the
-  note asks for a change it proposes block operations: replace, add, remove,
-  move. The panel shows them as a diff with the schedule effect of each
+  note asks for a change it returns the edited lesson as a block list, with
+  `keep` for unchanged blocks. The server turns that into block operations
+  (replace, add, remove, move) against the current version. (A schema with the
+  block types nested inside a union of operations was rejected by the API as
+  too large a grammar.) The panel shows them as a diff with the schedule effect of each
   question change (kept, restarts, new, stops). Accept saves the next version;
   a newer suggestion supersedes an older pending one; a suggestion made against
   an older version cannot be accepted. Claude gets the person's per-question

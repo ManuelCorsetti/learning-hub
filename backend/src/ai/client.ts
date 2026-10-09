@@ -75,8 +75,14 @@ export async function callStructured<T>(db: Db, call: StructuredCall<T>): Promis
     { role: 'user', content: `Input:\n\`\`\`json\n${JSON.stringify(call.input, null, 2)}\n\`\`\`` },
   ]
 
-  const log = (outcome: 'ok' | 'invalid' | 'error', result: T | null) =>
-    run(
+  const log = (outcome: 'ok' | 'invalid' | 'error', result: T | null) => {
+    // One line per call in the server terminal; the full record is in ai_runs (Settings → Recent Claude calls).
+    const seconds = ((Date.now() - started) / 1000).toFixed(1)
+    const problem = outcome === 'ok' ? '' : ` · ${attempts.at(-1)?.validation_errors.join('; ').slice(0, 300) ?? ''}`
+    const line = `[ai] ${call.task} · ${model} · ${outcome} · ${attempts.length} attempt(s) · ${inputTokens}/${outputTokens} tokens · ${seconds}s · run ${runId}${problem}`
+    if (outcome === 'ok') console.log(line)
+    else console.error(line)
+    return run(
       db,
       `INSERT INTO ai_runs (id, task, prompt_name, prompt_hash, model, request_json, attempts_json, result_json,
          outcome, attempt_count, input_tokens, output_tokens, latency_ms, created_at)
@@ -96,6 +102,7 @@ export async function callStructured<T>(db: Db, call: StructuredCall<T>): Promis
       Date.now() - started,
       nowIso(),
     )
+  }
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     let response: Anthropic.Beta.BetaMessage

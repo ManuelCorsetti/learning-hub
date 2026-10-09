@@ -474,3 +474,24 @@ export interface SchedulerView {
   defaultInitialStability: number[]
   personal: { id: string; trained_on_attempts: number; created_at: string } | null
 }
+
+export interface AiRunSummary {
+  id: string
+  task: string
+  model: string
+  outcome: 'ok' | 'invalid' | 'error'
+  attempt_count: number
+  input_tokens: number | null
+  output_tokens: number | null
+  latency_ms: number | null
+  created_at: string
+  /** The last attempt's error or validation problems, when the call did not succeed. */
+  error: string | null
+}
+
+export interface AiRunDetail extends AiRunSummary {
+  prompt_name: string
+  request: unknown
+  attempts: { raw_output: string | null; stop_reason: string | null; validation_errors: string[] }[]
+  result: unknown
+}

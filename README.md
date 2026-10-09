@@ -74,6 +74,7 @@ The default model is `claude-opus-5-5`; set `LEARNING_MODEL` to change it.
 | `npm run ai:smoke` | Run Capture on the sample brain-dump against a throwaway database and print the suggestions (calls the API) |
 | `npm run ai:lesson` | Generate a lesson in a throwaway database and print it for prompt review (calls the API). Pass a topic title, `--brief "…"` (and `--level applied`) to run the planner first, or `--questions` for the imported article |
 | `npm run db:reset` | Delete the local database and reload the starter map |
+| `npm run ai:runs` | List recent Claude calls and their errors; pass a run id for the full request and raw output (also in Settings) |
 | `npm run db:replay` | Rebuild every review schedule by replaying attempts (after changing scheduler parameters) |
 
 Every Claude call is logged in the `ai_runs` table, including the prompt hash,

@@ -42,6 +42,7 @@ import { createLink, removeLink } from './services/links'
 import { getAreaDetail, getAreaGraph, getHome } from './services/map'
 import { rankNextUp } from './services/nextUp'
 import { completeSession, practiceQueue, recordAttempt, startSession } from './services/practice'
+import { getAiRun, listAiRuns } from './services/aiRuns'
 import { fitSchedulerParams, resetSchedulerParams, schedulerView } from './services/schedulerFit'
 import { getSettings, updateSettings } from './services/settings'
 import {
@@ -88,6 +89,8 @@ export function createApp(db: Db, options: { aiAvailable?: () => boolean } = {})
   app.get('/health', (c) => c.json({ ok: true }))
   app.get('/home', (c) => c.json(getHome(db, aiAvailable())))
   app.get('/settings', (c) => c.json(getSettings(db)))
+  app.get('/ai-runs', (c) => c.json(listAiRuns(db)))
+  app.get('/ai-runs/:id', (c) => c.json(getAiRun(db, c.req.param('id'))))
   app.get('/scheduler', (c) => c.json(schedulerView(db)))
   app.post('/scheduler/fit', (c) => c.json(fitSchedulerParams(db)))
   app.post('/scheduler/reset', (c) => c.json(resetSchedulerParams(db)))
