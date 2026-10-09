@@ -3,26 +3,39 @@
 //   npm run ai:lesson                                  → a full lesson for "Change data capture"
 //   npm run ai:lesson -- "Some topic title"            → a full lesson for any title (created if not seeded)
 //   npm run ai:lesson -- --questions                   → questions for the imported dimensional-modelling article
+//   npm run ai:lesson -- "Topic" --brief "…" [--level applied]  → one planner turn (printed), then the lesson
+// Set a profile for the run with LESSON_PROFILE="…" (stored as "About me" in the throwaway database).
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { generateLesson, generateQuestions } from '../src/ai/lessons'
-import { config, ROOT } from '../src/config'
+import type { LessonLevel } from '../../shared/domain'
+import { planLessonTurn } from '../src/ai/lessonPlanner'
+import { buildFromRequest, generateLesson, generateQuestions } from '../src/ai/lessons'
+import { ROOT } from '../src/config'
 import { all, get, openDb } from '../src/db/connection'
 import { seedIfEmpty } from '../src/db/seed'
 import type { Block } from '../../shared/lessons'
 import { importSeedArticles } from '../src/services/articles'
 import { SYSTEM } from '../src/services/events'
+import { createLessonRequest } from '../src/services/lessonRequests'
 import { getLessonView } from '../src/services/lessons'
+import { currentModel, updateSettings } from '../src/services/settings'
 import { createTopic } from '../src/services/topics'
 
 const args = process.argv.slice(2)
+const flag = (name: string) => {
+  const i = args.indexOf(`--${name}`)
+  return i === -1 ? null : (args.splice(i, 2)[1] ?? null)
+}
+const brief = flag('brief')
+const level = flag('level') as LessonLevel | null
 const questionsOnly = args.includes('--questions')
 const title = args.filter((a) => !a.startsWith('--')).join(' ') || (questionsOnly ? 'Dimensional modelling' : 'Change data capture')
 
 const db = openDb(':memory:')
 seedIfEmpty(db)
 importSeedArticles(db)
-console.log(`Model: ${config.model}\n`)
+if (process.env.LESSON_PROFILE) updateSettings(db, { profile: { about: process.env.LESSON_PROFILE } })
+console.log(`Model: ${currentModel(db)}\n`)
 
 let lessonId: string
 if (questionsOnly) {
@@ -34,18 +47,30 @@ if (questionsOnly) {
   const topic =
     get<{ id: string }>(db, 'SELECT id FROM topics WHERE lower(title) = lower(?)', title) ??
     createTopic(db, SYSTEM, { title })
-  lessonId = (await generateLesson(db, topic.id)).lessonId
+  if (brief !== null || level) {
+    const request = await planLessonTurn(db, createLessonRequest(db, topic.id, { level, brief }).id)
+    const turn = request.messages.at(-1)!
+    if (turn.role === 'assistant') {
+      console.log(`Planner (${turn.ready ? 'ready' : 'asking'}): ${turn.reply}`)
+      for (const q of turn.questions) console.log(`  ? ${q}`)
+    }
+    console.log(`Plan: ${request.plan?.title}\n  ${request.plan?.outline.join('\n  ')}\n  examples: ${request.plan?.examples}\n`)
+    lessonId = (await buildFromRequest(db, request.id)).lessonId
+  } else {
+    lessonId = (await generateLesson(db, topic.id)).lessonId
+  }
 }
 
 const view = getLessonView(db, lessonId)
 console.log(`# ${view.title}  (v${view.version.version_no}, ${view.blocks.length} blocks)\n`)
 for (const b of view.blocks) console.log(describe(b) + '\n')
 
-const [run] = all<{ attempt_count: number; input_tokens: number; output_tokens: number; latency_ms: number }>(
+for (const run of all<{ task: string; attempt_count: number; input_tokens: number; output_tokens: number; latency_ms: number }>(
   db,
-  'SELECT attempt_count, input_tokens, output_tokens, latency_ms FROM ai_runs',
-)
-console.log(`Attempts: ${run.attempt_count}, tokens in/out: ${run.input_tokens}/${run.output_tokens}, ${run.latency_ms} ms`)
+  'SELECT task, attempt_count, input_tokens, output_tokens, latency_ms FROM ai_runs ORDER BY created_at',
+)) {
+  console.log(`${run.task}: attempts ${run.attempt_count}, tokens in/out ${run.input_tokens}/${run.output_tokens}, ${run.latency_ms} ms`)
+}
 
 const dir = join(ROOT, 'data', 'lesson-samples')
 mkdirSync(dir, { recursive: true })

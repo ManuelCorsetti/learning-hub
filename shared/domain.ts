@@ -45,7 +45,15 @@ export type ProposalKind = (typeof PROPOSAL_KINDS)[number]
 export const PROPOSAL_STATUSES = ['pending', 'accepted', 'rejected', 'superseded', 'failed'] as const
 export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number]
 
-export const AI_TASKS = ['capture', 'organise', 'next_up_why', 'generate_lesson', 'lesson_patch', 'optimise'] as const
+export const AI_TASKS = [
+  'capture',
+  'organise',
+  'next_up_why',
+  'plan_lesson',
+  'generate_lesson',
+  'lesson_patch',
+  'optimise',
+] as const
 export type AiTask = (typeof AI_TASKS)[number]
 
 export const LESSON_ORIGINS = ['ai', 'user', 'imported_article'] as const
@@ -86,6 +94,26 @@ export const RATING_LABELS: Record<Rating, string> = { 1: 'Again', 2: 'Hard', 3:
 
 export const REVIEW_STATES = ['new', 'learning', 'review', 'relearning'] as const
 export type ReviewState = (typeof REVIEW_STATES)[number]
+
+/** Models the user can switch between in Settings. */
+export const MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5'] as const
+export type Model = (typeof MODELS)[number]
+export const MODEL_LABELS: Record<Model, string> = {
+  'claude-opus-5-5': 'Opus 5.5',
+  'claude-sonnet-5-5': 'Sonnet 5.5',
+}
+
+/** Guidance for Build lesson; the order between lessons comes from prerequisites. */
+export const LESSON_LEVELS = ['fundamentals', 'applied', 'advanced'] as const
+export type LessonLevel = (typeof LESSON_LEVELS)[number]
+export const LESSON_LEVEL_LABELS: Record<LessonLevel, string> = {
+  fundamentals: 'Fundamentals',
+  applied: 'Applied to my context',
+  advanced: 'Advanced',
+}
+
+export const LESSON_REQUEST_STATUSES = ['open', 'built', 'abandoned'] as const
+export type LessonRequestStatus = (typeof LESSON_REQUEST_STATUSES)[number]
 
 /** Mastery (coverage × retention) at or above this, with every item tested, counts as solid. */
 export const SOLID_MASTERY_THRESHOLD = 0.8

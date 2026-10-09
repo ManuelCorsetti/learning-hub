@@ -2,7 +2,7 @@
 import type { NextUpItem } from '../../../shared/api'
 import { all, get, run, type Db } from '../db/connection'
 import { newId, nowIso, sha256 } from '../lib'
-import { prerequisiteEdges } from './links'
+import { parentEdges, prerequisiteEdges } from './links'
 import { listTopics } from './topics'
 
 export const NEXT_UP_EXPLAINED = 3
@@ -28,6 +28,8 @@ export function rankNextUp(db: Db, limit = 6): NextUpItem[] {
   )
 
   const isSolid = (id: string) => byId.get(id)?.status.effective === 'solid'
+  // A parent groups its sub-topics; Next up suggests the sub-topics themselves.
+  const parents = new Set(parentEdges(db).map(([, parent]) => parent))
 
   /** Every topic this one eventually unlocks, excluding those already solid. */
   const unlocks = (id: string): string[] => {
@@ -44,6 +46,7 @@ export function rankNextUp(db: Db, limit = 6): NextUpItem[] {
 
   const items = topics
     // Solid topics drop out of Next up until their reviews come due.
+    .filter((t) => !parents.has(t.id))
     .filter((t) => t.status.effective !== 'solid' || t.status.reviewsDue > 0)
     .map<NextUpItem>((t) => {
       const prereqs = (prereqsOf.get(t.id) ?? []).filter((p) => byId.has(p))

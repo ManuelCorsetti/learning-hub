@@ -11,6 +11,7 @@ import type { AiTask } from '../../../shared/domain'
 import { config } from '../config'
 import { run, type Db } from '../db/connection'
 import { AppError, newId, nowIso, sha256 } from '../lib'
+import { currentModel, profileText } from '../services/settings'
 
 const MAX_ATTEMPTS = 2
 
@@ -55,6 +56,16 @@ export async function callStructured<T>(db: Db, call: StructuredCall<T>): Promis
   const runId = newId()
   const prompt = loadPrompt(call.promptName)
   const effort = call.effort ?? 'medium'
+  const model = currentModel(db)
+  const profile = profileText(db)
+  // The learner profile travels with every call as a second system block, after the task prompt.
+  const system: Anthropic.Beta.BetaTextBlockParam[] = [{ type: 'text', text: prompt.text }]
+  if (profile) {
+    system.push({
+      type: 'text',
+      text: `The person you are helping wrote this profile. Use it to tailor examples, depth and vocabulary. Do not repeat it back.\n\n${profile}`,
+    })
+  }
   const started = Date.now()
   const attempts: AttemptLog[] = []
   let inputTokens = 0
@@ -74,8 +85,8 @@ export async function callStructured<T>(db: Db, call: StructuredCall<T>): Promis
       call.task,
       call.promptName,
       prompt.hash,
-      config.model,
-      JSON.stringify({ effort, input: call.input }),
+      model,
+      JSON.stringify({ effort, profile, input: call.input }),
       JSON.stringify(attempts),
       result === null ? null : JSON.stringify(result),
       outcome,
@@ -90,9 +101,9 @@ export async function callStructured<T>(db: Db, call: StructuredCall<T>): Promis
     let response: Anthropic.Beta.BetaMessage
     try {
       response = await getClient().beta.messages.create({
-        model: config.model,
+        model,
         max_tokens: 16000,
-        system: prompt.text,
+        system,
         messages,
         output_config: { effort, format: betaZodOutputFormat(call.schema) },
         // If a safety classifier declines, retry server-side on Anthropic's recommended fallback model.

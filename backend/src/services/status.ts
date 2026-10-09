@@ -31,7 +31,8 @@ export function measure(input: MeasurementInput): Measurement {
 }
 
 /**
- * Measures topics from the scheduled, live review items of their live lessons.
+ * Measures topics from the scheduled, live review items of their live lessons. A parent
+ * topic's figure combines its own lessons with its sub-topics' lessons.
  * Retention uses the scheduler's recall probability at `now`, so mastery decays without review.
  */
 export function measureTopics(db: Db, topicIds: string[], now = new Date()): Map<string, Measurement> {
@@ -42,31 +43,40 @@ export function measureTopics(db: Db, topicIds: string[], now = new Date()): Map
     retention.set(id, [])
   }
   if (topicIds.length) {
+    // A parent's measurement combines its own lessons with those of its live sub-topics.
     const rows = all<{
       topic_id: string
+      parent_id: string | null
       state: ReviewState | null
       stability: number | null
       last_reviewed_at: string | null
       due_at: string | null
     }>(
       db,
-      `SELECT l.topic_id, s.state, s.stability, s.last_reviewed_at, s.due_at
+      `SELECT l.topic_id, p.id AS parent_id, s.state, s.stability, s.last_reviewed_at, s.due_at
        FROM review_items ri
        JOIN lessons l ON l.id = ri.lesson_id AND l.archived_at IS NULL
+       LEFT JOIN topic_links pl ON pl.from_topic_id = l.topic_id AND pl.link_type = 'part_of'
+       LEFT JOIN topics p ON p.id = pl.to_topic_id AND p.archived_at IS NULL
        LEFT JOIN review_item_state s ON s.review_item_id = ri.id
        WHERE ri.is_scheduled = 1 AND ri.retired_at IS NULL
-         AND l.topic_id IN (SELECT value FROM json_each(?))`,
+         AND (l.topic_id IN (SELECT value FROM json_each(?1))
+           OR (p.id IN (SELECT value FROM json_each(?1))
+             AND l.topic_id IN (SELECT id FROM topics WHERE archived_at IS NULL)))`,
       JSON.stringify(topicIds),
     )
     const nowIso = now.toISOString()
     for (const r of rows) {
-      const input = inputs.get(r.topic_id)!
-      input.itemCount++
-      if (r.state !== 'review') input.allInReview = false
-      if (r.state === null) continue
-      input.attemptedCount++
-      retention.get(r.topic_id)!.push(retrievability(r, now))
-      if (r.due_at! <= nowIso) input.reviewsDue++
+      for (const id of [r.topic_id, r.parent_id]) {
+        const input = id ? inputs.get(id) : undefined
+        if (!input) continue
+        input.itemCount++
+        if (r.state !== 'review') input.allInReview = false
+        if (r.state === null) continue
+        input.attemptedCount++
+        retention.get(id!)!.push(retrievability(r, now))
+        if (r.due_at! <= nowIso) input.reviewsDue++
+      }
     }
   }
   const result = new Map<string, Measurement>()

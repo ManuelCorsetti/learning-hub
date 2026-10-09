@@ -2,13 +2,13 @@
 // the first time it appears and is retired when a later version drops it (data-model rules 7–9).
 import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
-import type { LessonAuthor, LessonOrigin, ReviewState } from '../../../shared/domain'
+import type { LessonAuthor, LessonLevel, LessonOrigin, ReviewState } from '../../../shared/domain'
 import type { ItemProgress, LessonSummary, LessonView } from '../../../shared/api'
 import { Block, LESSON_SCHEMA_VERSION, isInteractive, isScheduledType, lessonProblems } from '../../../shared/lessons'
 import { all, get, run, tx, type Db } from '../db/connection'
 import { AppError, clean, newId, notFound, nowIso } from '../lib'
 import { measureTopics } from './status'
-import { requireLiveTopic } from './topics'
+import { parentOf, requireLiveTopic } from './topics'
 
 export interface LessonRow {
   id: string
@@ -182,10 +182,13 @@ function syncReviewItems(db: Db, lessonId: string, versionId: string, blocks: Bl
 }
 
 export function listTopicLessons(db: Db, topicId: string): LessonSummary[] {
-  return all<LessonRow & { version_no: number; blocks_json: string; version_created_at: string }>(
+  return all<
+    LessonRow & { version_no: number; blocks_json: string; version_created_at: string; level: LessonLevel | null; brief: string | null }
+  >(
     db,
-    `SELECT l.*, v.version_no, v.blocks_json, v.created_at AS version_created_at
+    `SELECT l.*, v.version_no, v.blocks_json, v.created_at AS version_created_at, r.level, r.brief
      FROM lessons l
+     LEFT JOIN lesson_requests r ON r.lesson_id = l.id
      JOIN lesson_versions v ON v.lesson_id = l.id
        AND v.version_no = (SELECT max(version_no) FROM lesson_versions WHERE lesson_id = l.id)
      WHERE l.topic_id = ? AND l.archived_at IS NULL
@@ -197,6 +200,8 @@ export function listTopicLessons(db: Db, topicId: string): LessonSummary[] {
       id: l.id,
       title: l.title,
       origin: l.origin,
+      level: l.level,
+      brief: l.brief,
       version_no: l.version_no,
       updated_at: l.version_created_at,
       questionCount: blocks.filter((b) => isScheduledType(b.type)).length,
@@ -208,11 +213,17 @@ export function listTopicLessons(db: Db, topicId: string): LessonSummary[] {
 export function getLessonView(db: Db, lessonId: string): LessonView {
   const lesson = requireLesson(db, lessonId)
   const version = latestVersion(db, lessonId)
-  const topic = get<{ id: string; title: string; area_id: string | null }>(
+  const row = get<{ id: string; title: string; area_id: string | null; area_name: string | null }>(
     db,
-    'SELECT id, title, area_id FROM topics WHERE id = ?',
+    'SELECT t.id, t.title, t.area_id, a.name AS area_name FROM topics t LEFT JOIN areas a ON a.id = t.area_id WHERE t.id = ?',
     lesson.topic_id,
   )!
+  const topic = {
+    id: row.id,
+    title: row.title,
+    area: row.area_id ? { id: row.area_id, name: row.area_name! } : null,
+    parent: parentOf(db, row.id) ?? null,
+  }
   const rows = all<{
     id: string
     block_id: string

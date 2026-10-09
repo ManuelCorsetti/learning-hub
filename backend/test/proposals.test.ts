@@ -6,7 +6,7 @@ import { all, openDb, type Db } from '../src/db/connection'
 import { newId } from '../src/lib'
 import { createArea } from '../src/services/areas'
 import { USER } from '../src/services/events'
-import { createLink } from '../src/services/links'
+import { createLink, parentEdges } from '../src/services/links'
 import {
   acceptProposal,
   acceptRun,
@@ -37,6 +37,7 @@ function captureContext(db: Db) {
       'SELECT id, title, summary, area_id FROM topics',
     ),
     pendingTitles: [] as string[],
+    subtopicIds: parentEdges(db).map(([child]) => child),
   }
 }
 
@@ -47,8 +48,8 @@ describe('capture', () => {
     const output: CaptureOutput = {
       new_areas: [],
       topics: [
-        { title: 'Typer', summary: '', why_i_care: null, area_id: 'nope', new_area_ref: null, rationale: '' },
-        { title: 'typer', summary: '', why_i_care: null, area_id: null, new_area_ref: 'a9', rationale: '' },
+        { ref: 't1', title: 'Typer', summary: '', why_i_care: null, area_id: 'nope', new_area_ref: null, parent_topic_id: null, parent_ref: null, rationale: '' },
+        { ref: 't2', title: 'typer', summary: '', why_i_care: null, area_id: null, new_area_ref: 'a9', parent_topic_id: null, parent_ref: null, rationale: '' },
       ],
       duplicates: [],
     }
@@ -65,9 +66,9 @@ describe('capture', () => {
     const output: CaptureOutput = {
       new_areas: [{ ref: 'py', name: 'Python', summary: 'The language and its tooling' }],
       topics: [
-        { title: 'CLI tools with Typer', summary: 's', why_i_care: null, area_id: null, new_area_ref: 'py', rationale: 'r' },
-        { title: 'ABCs and Protocols', summary: 's', why_i_care: null, area_id: null, new_area_ref: 'py', rationale: 'r' },
-        { title: 'dimensional modelling', summary: 's', why_i_care: null, area_id: null, new_area_ref: null, rationale: 'r' },
+        { ref: 't3', title: 'CLI tools with Typer', summary: 's', why_i_care: null, area_id: null, new_area_ref: 'py', parent_topic_id: null, parent_ref: null, rationale: 'r' },
+        { ref: 't4', title: 'ABCs and Protocols', summary: 's', why_i_care: null, area_id: null, new_area_ref: 'py', parent_topic_id: null, parent_ref: null, rationale: 'r' },
+        { ref: 't5', title: 'dimensional modelling', summary: 's', why_i_care: null, area_id: null, new_area_ref: null, parent_topic_id: null, parent_ref: null, rationale: 'r' },
       ],
       duplicates: [],
     }
@@ -93,7 +94,7 @@ describe('capture', () => {
     const db = fresh()
     const output: CaptureOutput = {
       new_areas: [{ ref: 'go', name: 'Other languages', summary: '' }],
-      topics: [{ title: 'Go basics', summary: '', why_i_care: null, area_id: null, new_area_ref: 'go', rationale: '' }],
+      topics: [{ ref: 't6', title: 'Go basics', summary: '', why_i_care: null, area_id: null, new_area_ref: 'go', parent_topic_id: null, parent_ref: null, rationale: '' }],
       duplicates: [],
     }
     const { drafts } = captureDrafts(output, captureContext(db))
@@ -102,12 +103,39 @@ describe('capture', () => {
     expect(listPendingGroups(db)).toHaveLength(0)
   })
 
+  it('nests new topics under a new parent and puts them in its area', () => {
+    const db = fresh()
+    const area = createArea(db, { name: 'Data engineering' }).id
+    const output: CaptureOutput = {
+      new_areas: [],
+      topics: [
+        { ref: 'c', title: 'dbt testing', summary: '', why_i_care: null, area_id: null, new_area_ref: null, parent_topic_id: null, parent_ref: 'p', rationale: '' },
+        { ref: 'p', title: 'dbt', summary: '', why_i_care: null, area_id: area, new_area_ref: null, parent_topic_id: null, parent_ref: null, rationale: '' },
+      ],
+      duplicates: [],
+    }
+    expect(checkCapture(output, captureContext(db))).toEqual([])
+    const { drafts } = captureDrafts(output, captureContext(db))
+    expect(drafts.map((d) => d.kind === 'create_topic' && d.payload.title)).toEqual(['dbt', 'dbt testing'])
+    expect(drafts[1].depends_on_id).toBe(drafts[0].id)
+    const runId = fakeRun(db, 'capture')
+    createProposals(db, runId, drafts)
+    expect(listPendingGroups(db)[0].proposals[1].description).toBe('Add "dbt testing" to Data engineering under "dbt"')
+    acceptRun(db, runId)
+    const child = listTopics(db).find((t) => t.title === 'dbt testing')!
+    expect(child.area_id).toBe(area)
+    expect(getTopicDetail(db, child.id).parent?.title).toBe('dbt')
+
+    const deeper = { ...output, topics: [{ ...output.topics[0], ref: 'x', title: 'Deeper', parent_ref: null, parent_topic_id: child.id }] }
+    expect(checkCapture(deeper, captureContext(db)).join()).toMatch(/only one level deep/)
+  })
+
   it('marks a proposal failed, not accepted, when it can no longer apply', () => {
     const db = fresh()
     const { drafts } = captureDrafts(
       {
         new_areas: [],
-        topics: [{ title: 'Evals', summary: '', why_i_care: null, area_id: null, new_area_ref: null, rationale: '' }],
+        topics: [{ ref: 't7', title: 'Evals', summary: '', why_i_care: null, area_id: null, new_area_ref: null, parent_topic_id: null, parent_ref: null, rationale: '' }],
         duplicates: [],
       },
       captureContext(db),
@@ -122,7 +150,7 @@ describe('organise', () => {
   it('rejects a batch whose prerequisites form a loop', () => {
     const db = fresh()
     const [a, b] = ['Closures', 'Decorators'].map((title) => createTopic(db, USER, { title }).id)
-    const ctx = { areas: [], topics: listTopics(db).map((t) => ({ id: t.id, title: t.title, summary: null, area_id: null, status: 'backlog' as const })), links: [] }
+    const ctx = { areas: [], topics: listTopics(db).map((t) => ({ id: t.id, title: t.title, summary: null, area_id: null, status: 'backlog' as const, parent_topic_id: null })), links: [] }
     const out: OrganiseOutput = {
       new_areas: [],
       area_updates: [],
@@ -133,6 +161,7 @@ describe('organise', () => {
         { from_topic_id: b, to_topic_id: a, link_type: 'prerequisite_of', rationale: '' },
       ],
       removed_links: [],
+      groupings: [],
     }
     expect(checkOrganise(db, out, ctx).join('\n')).toMatch(/loop/)
   })
@@ -149,9 +178,54 @@ describe('organise', () => {
       merges: [],
       new_links: [{ from_topic_id: a, to_topic_id: b, link_type: 'prerequisite_of', rationale: 'Decorators are closures' }],
       removed_links: [],
+      groupings: [],
     })
     createProposals(db, fakeRun(db, 'organise'), drafts)
     expect(pendingCountsByArea(db).get(area)).toBe(2)
+  })
+})
+
+describe('organise groupings', () => {
+  const empty = { new_areas: [], area_updates: [], moves: [], merges: [], new_links: [], removed_links: [] }
+  const contextOf = (db: Db) => ({
+    areas: all<{ id: string; name: string; summary: string | null }>(db, 'SELECT id, name, summary FROM areas'),
+    topics: listTopics(db).map((t) => ({ id: t.id, title: t.title, summary: null, area_id: t.area_id, status: t.status.effective, parent_topic_id: null })),
+    links: [],
+  })
+
+  it('groups existing topics under a new parent in their area', () => {
+    const db = fresh()
+    const area = createArea(db, { name: 'Data engineering' }).id
+    const ids = ['dbt fundamentals', 'dbt testing'].map((title) => createTopic(db, USER, { title, area_id: area }).id)
+    const out: OrganiseOutput = {
+      ...empty,
+      groupings: [{ parent_topic_id: null, new_parent: { title: 'dbt', summary: 'The tool', area_id: null }, child_topic_ids: ids, rationale: 'Same tool' }],
+    }
+    expect(checkOrganise(db, out, contextOf(db))).toEqual([])
+    const drafts = organiseDrafts(out, () => area)
+    expect(drafts.map((d) => d.kind)).toEqual(['create_topic', 'create_link', 'create_link'])
+    const runId = fakeRun(db, 'organise')
+    createProposals(db, runId, drafts)
+    expect(acceptRun(db, runId).every((r) => r.status === 'accepted')).toBe(true)
+    const parent = listTopics(db).find((t) => t.title === 'dbt')!
+    expect(parent.area_id).toBe(area)
+    expect(getTopicDetail(db, parent.id).subtopics.map((s) => s.title)).toEqual(['dbt fundamentals', 'dbt testing'])
+  })
+
+  it('refuses groupings that nest deeper than one level', () => {
+    const db = fresh()
+    const [a, b, c] = ['A', 'B', 'C'].map((title) => createTopic(db, USER, { title }).id)
+    const out: OrganiseOutput = {
+      ...empty,
+      new_links: [{ from_topic_id: b, to_topic_id: a, link_type: 'part_of', rationale: '' }],
+      groupings: [{ parent_topic_id: b, new_parent: null, child_topic_ids: [c], rationale: '' }],
+    }
+    expect(checkOrganise(db, out, contextOf(db)).join()).toMatch(/one level deep/)
+    const taken: OrganiseOutput = {
+      ...empty,
+      groupings: [{ parent_topic_id: null, new_parent: { title: 'a', summary: '', area_id: null }, child_topic_ids: [b, c], rationale: '' }],
+    }
+    expect(checkOrganise(db, taken, contextOf(db)).join()).toMatch(/already exists/)
   })
 })
 

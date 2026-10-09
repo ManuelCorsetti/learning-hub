@@ -10,6 +10,7 @@ import { openDb } from './db/connection'
 import { seedIfEmpty } from './db/seed'
 import { importSeedArticles } from './services/articles'
 import { rebuildIfStale } from './services/scheduler'
+import { currentModel } from './services/settings'
 
 const db = openDb(config.dbPath)
 if (seedIfEmpty(db)) console.log('Seeded the starter areas and topics.')
@@ -29,5 +30,5 @@ if (existsSync(config.distDir)) {
 serve({ fetch: app.fetch, port: config.port }, ({ port }) => {
   console.log(`Learning Studio API on http://localhost:${port}`)
   console.log(`Database: ${config.dbPath}`)
-  console.log(aiConfigured() ? `AI: ${config.model}` : 'AI: not configured (set ANTHROPIC_API_KEY to enable Capture and Organise)')
+  console.log(aiConfigured() ? `AI: ${currentModel(db)} (change it in Settings)` : 'AI: not configured (set ANTHROPIC_API_KEY to enable the AI features)')
 })

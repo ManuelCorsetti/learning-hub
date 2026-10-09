@@ -1,16 +1,16 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { RESOURCE_KINDS, STATUS_LABELS, type ResourceKind, type TopicStatus } from '../../../shared/domain'
+import { LESSON_LEVEL_LABELS, RESOURCE_KINDS, STATUS_LABELS, type ResourceKind, type TopicStatus } from '../../../shared/domain'
 import type {
   GoalView,
   HomeData,
-  LessonView,
   LinkView,
   TopicDetail,
   TopicEventView,
   TopicListItem,
 } from '../../../shared/api'
 import { api, useAction, useApi } from '../api'
-import { areaHref, lessonHref, navigate } from '../router'
+import { areaHref, lessonHref, topicHref } from '../router'
+import { BuildLessonDialog } from './BuildLessonDialog'
 import { STATUS_ORDER, formatDate, masteryText, percent } from './status'
 
 export function TopicPanel({ topicId, onClose }: { topicId: string; onClose: () => void }) {
@@ -27,12 +27,20 @@ export function TopicPanel({ topicId, onClose }: { topicId: string; onClose: () 
       <div className="panel-backdrop" onClick={onClose} />
       <aside className="panel" aria-label="Topic details">
         <div className="panel-head">
-          <span className="eyebrow">{topic ? (topic.area?.name ?? 'Inbox') : 'Topic'}</span>
+          <span className="eyebrow">
+            {topic ? (topic.area?.name ?? 'Inbox') : 'Topic'}
+            {topic?.parent && ` › ${topic.parent.title}`}
+          </span>
           <button className="icon-btn close" onClick={onClose} aria-label="Close">
             ×
           </button>
         </div>
         {error && <p className="error">{error}</p>}
+        {topic && (
+          <a className="btn small" href={topicHref(topic.id)} style={{ marginBottom: 14 }}>
+            Open topic page →
+          </a>
+        )}
         {topic && <TopicBody key={topic.id} topic={topic} />}
       </aside>
     </>
@@ -116,7 +124,7 @@ function Details({ topic }: { topic: TopicDetail }) {
   )
 }
 
-function Status({ topic }: { topic: TopicDetail }) {
+export function Status({ topic }: { topic: TopicDetail }) {
   const [note, setNote] = useState(topic.status.overrideNote ?? '')
   const { busy, error, run } = useAction()
   const set = (status: TopicStatus, withNote = note) =>
@@ -160,17 +168,13 @@ function Status({ topic }: { topic: TopicDetail }) {
   )
 }
 
-const ORIGIN_LABELS = { ai: 'by Claude', user: 'yours', imported_article: 'imported article' } as const
+export const ORIGIN_LABELS = { ai: 'by Claude', user: 'yours', imported_article: 'imported article' } as const
 
-function Lessons({ topic }: { topic: TopicDetail }) {
+export function Lessons({ topic }: { topic: TopicDetail }) {
   const { data: home } = useApi<HomeData>('/home')
-  const { busy, error, run } = useAction()
+  const [building, setBuilding] = useState(false)
   const ai = home?.aiAvailable ?? false
   const m = topic.measurement
-  const build = async () => {
-    const lesson = await run(() => api.post<LessonView>(`/topics/${topic.id}/lessons`))
-    if (lesson) navigate(lessonHref(lesson.id))
-  }
   return (
     <section>
       <h3>Lessons</h3>
@@ -181,7 +185,8 @@ function Lessons({ topic }: { topic: TopicDetail }) {
             <span className="grow">
               <a href={lessonHref(l.id)}>{l.title}</a>
               <div className="small muted">
-                v{l.version_no} · {ORIGIN_LABELS[l.origin]} ·{' '}
+                v{l.version_no} · {l.level ? `${LESSON_LEVEL_LABELS[l.level]} · ` : ''}
+                {ORIGIN_LABELS[l.origin]} ·{' '}
                 {l.questionCount ? `${l.questionCount} question${l.questionCount === 1 ? '' : 's'}` : 'no questions yet'}
               </div>
             </span>
@@ -190,6 +195,7 @@ function Lessons({ topic }: { topic: TopicDetail }) {
       </ul>
       {m.mastery !== null && (
         <p className="measure">
+          {topic.subtopics.length > 0 && 'Includes its sub-topics. '}
           {percent(m.coverage!)} of questions tested · recall {m.retention === null ? 'not measured' : percent(m.retention)}
           {m.reviewsDue > 0 && (
             <>
@@ -204,14 +210,13 @@ function Lessons({ topic }: { topic: TopicDetail }) {
       <button
         className="btn small"
         style={{ marginTop: 10 }}
-        disabled={!ai || busy}
-        onClick={build}
-        title={ai ? 'Claude writes a lesson with questions for this topic' : 'Set ANTHROPIC_API_KEY to build lessons'}
+        disabled={!ai}
+        onClick={() => setBuilding(true)}
+        title={ai ? 'Plan a lesson with Claude, then build it' : 'Set ANTHROPIC_API_KEY to build lessons'}
       >
-        {busy ? <span className="spinner" /> : '✦'} Build lesson
+        ✦ Build lesson
       </button>
-      {busy && <p className="working">Claude is writing the lesson and its questions. This can take a couple of minutes.</p>}
-      {error && <p className="error">{error}</p>}
+      {building && <BuildLessonDialog topic={topic} onClose={() => setBuilding(false)} />}
     </section>
   )
 }
@@ -230,7 +235,7 @@ function linkLabel(link: LinkView): string {
   return link.direction === 'out' ? 'Part of' : 'Contains'
 }
 
-function Links({ topic }: { topic: TopicDetail }) {
+export function Links({ topic }: { topic: TopicDetail }) {
   const { data: topics } = useApi<TopicListItem[]>('/topics')
   const [choice, setChoice] = useState<keyof typeof LINK_CHOICES>('needs')
   const [other, setOther] = useState('')
@@ -287,7 +292,7 @@ function Links({ topic }: { topic: TopicDetail }) {
   )
 }
 
-function Goals({ topic }: { topic: TopicDetail }) {
+export function Goals({ topic }: { topic: TopicDetail }) {
   const { data: goals } = useApi<GoalView[]>('/goals')
   const [goalId, setGoalId] = useState('')
   const { busy, error, run } = useAction()
@@ -335,7 +340,7 @@ function Goals({ topic }: { topic: TopicDetail }) {
   )
 }
 
-function Resources({ topic }: { topic: TopicDetail }) {
+export function Resources({ topic }: { topic: TopicDetail }) {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<{ kind: ResourceKind; title: string; url: string; note: string }>({
     kind: 'link',
@@ -513,7 +518,7 @@ function describeEvent(e: TopicEventView): string {
   }
 }
 
-function History({ events }: { events: TopicEventView[] }) {
+export function History({ events }: { events: TopicEventView[] }) {
   return (
     <section>
       <h3>History</h3>

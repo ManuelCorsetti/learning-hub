@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from 'react'
-import type { AreaDetail } from '../../../shared/api'
+import type { AreaDetail, TopicListItem } from '../../../shared/api'
 import { api, useAction, useApi } from '../api'
+import { Breadcrumbs } from '../components/Breadcrumbs'
 import { StatusBar, StatusPill, legendText } from '../components/status'
 import { TopicGraph } from '../components/TopicGraph'
 import { TopicPanel } from '../components/TopicPanel'
-import { areaHref, navigate, type AreaView } from '../router'
+import { areaHref, navigate, topicHref, type AreaView } from '../router'
 
 export function AreaPage({ areaId, topicId, view }: { areaId: string; topicId: string | null; view: AreaView }) {
   const { data, error } = useApi<AreaDetail>(`/areas/${areaId}`)
@@ -30,9 +31,7 @@ export function AreaPage({ areaId, topicId, view }: { areaId: string; topicId: s
 
   return (
     <>
-      <a className="back" href="#/">
-        ← All areas
-      </a>
+      <Breadcrumbs items={[{ label: 'Map', href: '#/' }, { label: data.area?.name ?? 'Inbox' }]} />
       <div className="area-head">
         <div style={{ flex: 1 }}>
           <span className="eyebrow">{data.area ? `Area ${String(data.area.position).padStart(2, '0')}` : 'Unsorted'}</span>
@@ -73,16 +72,20 @@ export function AreaPage({ areaId, topicId, view }: { areaId: string; topicId: s
       {view === 'list' ? (
         <div className="topic-list">
           {data.topics.length === 0 && <p className="empty">No topics here yet. Add one above, or use Capture on the home page.</p>}
-          {data.topics.map((t) => (
-            <button
-              key={t.id}
-              className={`topic-row ${t.id === topicId ? 'selected' : ''}`}
-              onClick={() => openTopic(t.id)}
-            >
-              <b>{t.title}</b>
+          {grouped(data.topics).map(({ topic: t, depth, childCount }) => (
+            <a key={t.id} className={`topic-row ${depth ? 'sub' : ''} ${t.id === topicId ? 'selected' : ''}`} href={topicHref(t.id)}>
+              <b>
+                {t.title}
+                {childCount > 0 && (
+                  <span className="small muted">
+                    {' '}
+                    · {childCount} sub-topic{childCount === 1 ? '' : 's'}
+                  </span>
+                )}
+              </b>
               <StatusPill status={t.status} />
               {t.summary && <p>{t.summary}</p>}
-            </button>
+            </a>
           ))}
         </div>
       ) : (
@@ -92,6 +95,18 @@ export function AreaPage({ areaId, topicId, view }: { areaId: string; topicId: s
       {topicId && <TopicPanel topicId={topicId} onClose={() => openTopic(null)} />}
     </>
   )
+}
+
+/** Top-level topics in title order, each followed by its sub-topics. */
+function grouped(topics: TopicListItem[]): { topic: TopicListItem; depth: number; childCount: number }[] {
+  const ids = new Set(topics.map((t) => t.id))
+  const childrenOf = (id: string) => topics.filter((t) => t.parent_id === id)
+  return topics
+    .filter((t) => !t.parent_id || !ids.has(t.parent_id))
+    .flatMap((t) => [
+      { topic: t, depth: 0, childCount: childrenOf(t.id).length },
+      ...childrenOf(t.id).map((c) => ({ topic: c, depth: 1, childCount: 0 })),
+    ])
 }
 
 function AddTopic({ areaId, onAdded }: { areaId: string | null; onAdded: (id: string) => void }) {

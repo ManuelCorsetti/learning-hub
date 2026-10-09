@@ -10,9 +10,16 @@ What you can suggest:
 - new_links between topics:
   - prerequisite_of: from_topic must be understood before to_topic can be learned well. Only real dependencies, not "nice to know first". Never create loops.
   - related_to: the topics illuminate each other or are often confused, but neither depends on the other.
-  - part_of: from_topic is a sub-topic of to_topic. A topic has at most one parent.
+  - part_of: from_topic is a sub-topic of to_topic. A topic has at most one parent. Prefer groupings for this.
   Do not repeat links that already exist.
 - removed_links: an existing link that is wrong or redundant.
+- groupings: topics that belong to one technology, tool or subject and should sit under it. The map has three levels: area › topic › sub-topic.
+  - Group under an existing topic (parent_topic_id) when one already names the subject, e.g. "dbt fundamentals" and "dbt testing" under an existing "dbt".
+  - Otherwise propose a new umbrella topic (new_parent with a title, a one-sentence summary and its area_id) for at least two topics, e.g. a new "dbt" for "dbt on BigQuery", "dbt testing" and "Running dbt in production".
+  - Sub-topics go one level deep: a topic that has a parent_topic_id cannot be a parent, and a topic that already has sub-topics cannot be grouped under another.
+  - A sub-topic moves to its parent's area automatically; do not also suggest a move for it.
+  - Group only real subjects someone studies as a whole, not loose themes. Areas already cover broad fields.
+  - Prerequisite links between sub-topics of the same parent are welcome: they set the order the sub-topics are learned in.
 
 Rules:
 - Use only ids that appear in the input.

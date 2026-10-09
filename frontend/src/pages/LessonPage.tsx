@@ -8,7 +8,7 @@ import { QuestionCard } from '../components/lesson/Questions'
 import { ConceptBlock, DiagramBlock, StepsBlock } from '../components/lesson/TeachingBlocks'
 import { useStudySession } from '../components/lesson/useStudySession'
 import { formatDate, percent } from '../components/status'
-import { areaHref } from '../router'
+import { Breadcrumbs, topicCrumbs } from '../components/Breadcrumbs'
 
 interface Section {
   id: string
@@ -65,9 +65,7 @@ function Lesson({ lesson, aiAvailable }: { lesson: LessonView; aiAvailable: bool
 
   return (
     <div className="lesson">
-      <a className="back" href={areaHref(lesson.topic.area_id, lesson.topic.id)}>
-        ← {lesson.topic.title}
-      </a>
+      <Breadcrumbs items={[...topicCrumbs(lesson.topic), { label: lesson.title }]} />
       <div className="article-heading">
         <div>
           <span className="eyebrow">

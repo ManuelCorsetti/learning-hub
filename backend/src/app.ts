@@ -9,17 +9,21 @@ import {
   CreateLinkInput,
   CreateResourceInput,
   CreateTopicInput,
+  LessonRequestReplyInput,
   LinkGoalInput,
   MergeTopicInput,
   SetStatusInput,
+  StartLessonRequestInput,
   StartSessionInput,
   UpdateAreaInput,
+  UpdateSettingsInput,
   UpdateGoalInput,
   UpdateTopicInput,
 } from '../../shared/api'
 import { aiConfigured } from './ai/client'
 import { runCapture } from './ai/capture'
-import { generateLesson, generateQuestions } from './ai/lessons'
+import { planLessonTurn } from './ai/lessonPlanner'
+import { buildFromRequest, generateLesson, generateQuestions } from './ai/lessons'
 import { explainNextUp } from './ai/nextUpWhy'
 import { runOrganise } from './ai/organise'
 import type { Db } from './db/connection'
@@ -27,11 +31,13 @@ import { AppError } from './lib'
 import { archiveArea, createArea, updateArea } from './services/areas'
 import { USER } from './services/events'
 import { addResource, archiveResource, createGoal, linkGoal, listGoals, unlinkGoal, updateGoal } from './services/goals'
+import { createLessonRequest, getLessonRequest } from './services/lessonRequests'
 import { getLessonView } from './services/lessons'
 import { createLink, removeLink } from './services/links'
 import { getAreaDetail, getAreaGraph, getHome } from './services/map'
 import { rankNextUp } from './services/nextUp'
 import { completeSession, practiceQueue, recordAttempt, startSession } from './services/practice'
+import { getSettings, updateSettings } from './services/settings'
 import {
   acceptMany,
   acceptProposal,
@@ -75,6 +81,8 @@ export function createApp(db: Db, options: { aiAvailable?: () => boolean } = {})
 
   app.get('/health', (c) => c.json({ ok: true }))
   app.get('/home', (c) => c.json(getHome(db, aiAvailable())))
+  app.get('/settings', (c) => c.json(getSettings(db)))
+  app.patch('/settings', async (c) => c.json(updateSettings(db, await body(c, UpdateSettingsInput))))
 
   // Next up
   app.get('/next-up', (c) => c.json(rankNextUp(db)))
@@ -180,6 +188,23 @@ export function createApp(db: Db, options: { aiAvailable?: () => boolean } = {})
   app.post('/topics/:id/lessons', async (c) => {
     requireAi()
     const { lessonId } = await generateLesson(db, c.req.param('id'))
+    return c.json(getLessonView(db, lessonId), 201)
+  })
+  app.post('/topics/:id/lesson-requests', async (c) => {
+    const input = await body(c, StartLessonRequestInput)
+    const request = createLessonRequest(db, c.req.param('id'), input)
+    // Without AI the dialog still opens; planning simply needs a key.
+    if (!aiAvailable()) return c.json(request, 201)
+    return c.json(await planLessonTurn(db, request.id), 201)
+  })
+  app.get('/lesson-requests/:id', (c) => c.json(getLessonRequest(db, c.req.param('id'))))
+  app.post('/lesson-requests/:id/reply', async (c) => {
+    requireAi()
+    return c.json(await planLessonTurn(db, c.req.param('id'), (await body(c, LessonRequestReplyInput)).message))
+  })
+  app.post('/lesson-requests/:id/build', async (c) => {
+    requireAi()
+    const { lessonId } = await buildFromRequest(db, c.req.param('id'))
     return c.json(getLessonView(db, lessonId), 201)
   })
   app.get('/lessons/:id', (c) => c.json(getLessonView(db, c.req.param('id'))))

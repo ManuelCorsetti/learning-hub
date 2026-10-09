@@ -40,12 +40,18 @@ The default model is `claude-opus-5-5`; set `LEARNING_MODEL` to change it.
 4. Open an area and switch between **List** and **Graph**. Click a topic for its
    panel: status override, links, goals, resources and history.
 5. Add a **goal** and link topics to it. They move up in **Next up**.
-6. In a topic's panel, **Build lesson**: Claude writes a lesson with questions.
-   For the imported dimensional-modelling lesson, use **Add questions** on the
+6. Fill in your profile in **Settings** (your role, stack and goals) and pick
+   Opus 5.5 or Sonnet 5.5. Every Claude request uses both.
+7. Open a topic page and click **Build lesson**: choose a level, write a brief,
+   and plan it with Claude, who may ask a question or two before writing. For
+   the imported dimensional-modelling lesson, use **Add questions** on the
    lesson page instead.
-7. Answer the questions. Pick how sure you are before the answer is revealed;
+8. Answer the questions. Pick how sure you are before the answer is revealed;
    that sets the scheduler rating. Mastery and status update from your answers.
-8. **Practice** lists every review that is due, across all topics.
+9. **Practice** lists every review that is due, across all topics.
+10. Group related topics under a parent (area › topic › sub-topic): Capture and
+    Organise suggest it, or add sub-topics on a topic page. Prerequisites between
+    sub-topics set the order of the parent's learning path.
 
 ## Scripts
 
@@ -56,7 +62,7 @@ The default model is `claude-opus-5-5`; set `LEARNING_MODEL` to change it.
 | `npm test` | Backend tests (Vitest, in-memory database) |
 | `npm run typecheck` | TypeScript across `backend`, `frontend` and `shared` |
 | `npm run ai:smoke` | Run Capture on the sample brain-dump against a throwaway database and print the suggestions (calls the API) |
-| `npm run ai:lesson` | Generate a lesson in a throwaway database and print it for prompt review (calls the API). Pass a topic title, or `--questions` for the imported article |
+| `npm run ai:lesson` | Generate a lesson in a throwaway database and print it for prompt review (calls the API). Pass a topic title, `--brief "…"` (and `--level applied`) to run the planner first, or `--questions` for the imported article |
 | `npm run db:reset` | Delete the local database and reload the starter map |
 | `npm run db:replay` | Rebuild every review schedule by replaying attempts (after changing scheduler parameters) |
 

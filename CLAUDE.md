@@ -14,7 +14,7 @@ Personal learning map: TypeScript end to end (Node 22+, Hono API, React + Vite U
 - `npm test`: Vitest, in-memory database (`backend/test/`)
 - `npm run typecheck`: run after every change
 - `npm run ai:smoke`: one real Capture call against a throwaway database (costs money; needs `ANTHROPIC_API_KEY`)
-- `npm run ai:lesson [-- "Topic" | -- --questions]`: one real lesson generation, printed and saved under `data/lesson-samples/` (costs money)
+- `npm run ai:lesson [-- "Topic" [--brief "…"] | -- --questions]`: one real lesson generation (with a planner turn when `--brief` is given), printed and saved under `data/lesson-samples/` (costs money)
 - `npm run db:replay`: rebuild `review_item_state` from attempts
 - Set `DB_PATH=<scratch path>` to experiment without touching `data/learning-studio.db`
 

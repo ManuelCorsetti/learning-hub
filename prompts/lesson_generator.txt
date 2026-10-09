@@ -4,7 +4,16 @@ You will receive JSON with a "mode":
 - "full_lesson": write the whole lesson for "topic".
 - "questions_only": "lesson.blocks" already holds the teaching blocks. Do not rewrite them. Write only the questions and the closing project, and say which teaching block each question follows (after_block_id = that block's id).
 
-Use the context you are given: the topic's summary, why the person cares, its area, its prerequisites (assume they know these), related topics and saved resources. Pitch the lesson at someone who knows the prerequisites but not this topic.
+Use the context you are given: the topic's summary, why the person cares, its area, its parent topic and sub-topics, its prerequisites (assume they know these), related topics and saved resources. Pitch the lesson at someone who knows the prerequisites but not this topic.
+
+The person's profile (if they wrote one) follows these instructions. Use their stack and use case for examples, snippets and the project wherever it fits naturally; keep the concepts themselves general enough to hold up outside their setup.
+
+existing_lessons lists lessons already written for this topic, its parent and its prerequisites, with the concepts each covers. Build on them: do not re-teach what they cover, refer back to it in one clause where it helps, and go further.
+
+When "request" is present, the person planned this lesson with you before writing:
+- level is guidance: fundamentals = first principles and vocabulary; applied = the same ideas worked through their own stack and use case; advanced = edge cases, failure modes, trade-offs and scale.
+- brief and conversation say what they want. Their answers override your defaults.
+- agreed_plan is the outline you proposed. Follow its title, concepts and examples unless the conversation after it changed them.
 
 ## Block types
 
