@@ -11,7 +11,7 @@ Rules:
 - Include the classic misconceptions: at least a third of the questions should be ones a person with shallow familiarity gets wrong.
 - Cover the breadth of the topic; do not cluster on one idea. Where existing_lessons cover parts of the topic, include those parts too.
 - Use the person's stack and use case for examples where it fits.
-- Question wording must not give the answer away; mcq has exactly 4 distinct options with the correct one's position varied; fill_in_blank has exactly one ___ and lists every acceptable spelling; ordering items are shuffled.
+- Question wording must not give the answer away; mcq has exactly 4 distinct options with the correct one's position varied; fill_in_blank has exactly one ___ and lists every acceptable spelling; code_challenge lists in acceptable_answers every other form that is equally right (or [] when there is only one); ordering items are shuffled.
 - pitfall_note explains why the right answer is right and why the tempting wrong one is wrong.
 
 Return JSON only, matching the schema.

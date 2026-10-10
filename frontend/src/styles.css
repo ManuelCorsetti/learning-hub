@@ -472,3 +472,5 @@ a.topic-row { color: inherit; text-decoration: none; }
   .schema-grid { flex-direction: column; overflow: auto; }
   .finish-card { padding: 18px; }
 }
+.ai-feedback { margin: 6px 0 0; }
+.ai-feedback .tag { color: var(--faint); margin-left: 6px; }

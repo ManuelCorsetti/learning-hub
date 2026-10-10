@@ -27,8 +27,8 @@ Teaching blocks (no grading):
 Questions (each one becomes a review item):
 - quiz_mcq: question, options (exactly 4, distinct), correct_index (0–3), pitfall_note.
 - quiz_true_false: statement, answer (true/false), pitfall_note.
-- fill_in_blank: sentence containing exactly one ___ (three underscores), acceptable_answers (every reasonable spelling or synonym of the one right answer; matching ignores case and surrounding spaces).
-- code_challenge: language, question (what to work out, e.g. "What does this print?"), snippet, expected_answer (short and exact, e.g. a value, a line of output, a keyword), hint. The code is never run; the answer is compared as text, ignoring case and whitespace. Only use it when the topic involves code, SQL or commands.
+- fill_in_blank: sentence containing exactly one ___ (three underscores), acceptable_answers (every reasonable spelling or synonym of the one right answer; matching ignores case, extra spaces and the choice between ' and "). A near miss is also read by a small model that grades meaning, so list the forms people would plausibly write rather than every typo.
+- code_challenge: language, question (what to work out, e.g. "What does this print?"), snippet, expected_answer (short and exact, e.g. a value, a line of output, a keyword), acceptable_answers (other forms that are equally right: another valid way to write the same call or query, an equivalent value format; [] when there is only one), hint. The code is never run; the answer is compared as text, ignoring case, whitespace, a trailing semicolon and the choice between ' and ". Write the question so one short answer is clearly wanted. Only use it when the topic involves code, SQL or commands.
 - ordering: prompt, items_shuffled (3–6 distinct items, not already in the correct order), correct_order (the same items in the correct order).
 
 Closing block:
