@@ -60,6 +60,10 @@ function blockSchemas<Id extends z.ZodType>(id: Id) {
     question: text.describe('What to work out from the snippet, e.g. "What does this query return?"'),
     snippet: text,
     expected_answer: text,
+    acceptable_answers: z
+      .array(text)
+      .default([])
+      .describe('Other forms of the answer that are equally right (different but equivalent wording or syntax); may be empty'),
     hint: text,
   })
   const ordering = z.object({

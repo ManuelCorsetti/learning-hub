@@ -26,6 +26,7 @@ import { runCapture } from './ai/capture'
 import { sendLessonMessage } from './ai/lessonEditor'
 import { planLessonTurn } from './ai/lessonPlanner'
 import { buildFromRequest, generateLesson, generateQuestions } from './ai/lessons'
+import { recordGradedAttempt } from './ai/gradeAnswer'
 import { explainNextUp } from './ai/nextUpWhy'
 import { optimiseSignals, runOptimise } from './ai/optimise'
 import { generatePlacement } from './ai/placement'
@@ -41,7 +42,7 @@ import { listMessages } from './services/coauthor'
 import { createLink, removeLink } from './services/links'
 import { getAreaDetail, getAreaGraph, getHome } from './services/map'
 import { rankNextUp } from './services/nextUp'
-import { completeSession, practiceQueue, recordAttempt, startSession } from './services/practice'
+import { completeSession, practiceQueue, startSession } from './services/practice'
 import { getAiRun, listAiRuns } from './services/aiRuns'
 import { fitSchedulerParams, resetSchedulerParams, schedulerView } from './services/schedulerFit'
 import { getSettings, updateSettings } from './services/settings'
@@ -255,7 +256,7 @@ export function createApp(db: Db, options: { aiAvailable?: () => boolean } = {})
     completeSession(db, c.req.param('id'))
     return c.json({ ok: true })
   })
-  app.post('/attempts', async (c) => c.json(recordAttempt(db, await body(c, AttemptInput)), 201))
+  app.post('/attempts', async (c) => c.json(await recordGradedAttempt(db, await body(c, AttemptInput), { available: aiAvailable() }), 201))
   app.get('/practice', (c) => c.json(practiceQueue(db)))
 
   return app

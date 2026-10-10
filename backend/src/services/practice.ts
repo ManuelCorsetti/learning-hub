@@ -5,7 +5,7 @@ import type { AttemptInput, AttemptResult, PracticeData, PracticeItem } from '..
 import type { InteractiveBlock } from '../../../shared/lessons'
 import { all, get, run, tx, type Db } from '../db/connection'
 import { AppError, conflict, newId, notFound, nowIso } from '../lib'
-import { grade, isConfidentlyWrong, rate } from './grading'
+import { grade, isConfidentlyWrong, rate, type AiGrade, type Grade } from './grading'
 import { latestVersion, versionBlocks, type LessonVersionRow } from './lessons'
 import { refreshSchedule, type ReviewItemStateRow } from './scheduler'
 import { resolveOverrides } from './topics'
@@ -49,34 +49,49 @@ export function completeSession(db: Db, id: string): void {
   }
 }
 
-export function recordAttempt(db: Db, input: z.infer<typeof AttemptInput>, now = new Date()): AttemptResult {
-  const result = tx(db, () => {
-    const session = get<SessionRow>(db, 'SELECT * FROM study_sessions WHERE id = ?', input.session_id)
-    if (!session) throw notFound('Study session')
-    if (session.completed_at) throw conflict('This study session has ended. Start a new one.')
-    const item = get<{ id: string; lesson_id: string; block_id: string; retired_at: string | null }>(
-      db,
-      'SELECT id, lesson_id, block_id, retired_at FROM review_items WHERE id = ?',
-      input.review_item_id,
-    )
-    if (!item) throw notFound('Review item')
-    if (item.retired_at) throw conflict('This question was removed from its lesson')
+/** The session, item and block an attempt refers to; throws when it cannot be recorded. */
+export function attemptContext(db: Db, input: Pick<z.infer<typeof AttemptInput>, 'session_id' | 'review_item_id'>) {
+  const session = get<SessionRow>(db, 'SELECT * FROM study_sessions WHERE id = ?', input.session_id)
+  if (!session) throw notFound('Study session')
+  if (session.completed_at) throw conflict('This study session has ended. Start a new one.')
+  const item = get<{ id: string; lesson_id: string; block_id: string; retired_at: string | null }>(
+    db,
+    'SELECT id, lesson_id, block_id, retired_at FROM review_items WHERE id = ?',
+    input.review_item_id,
+  )
+  if (!item) throw notFound('Review item')
+  if (item.retired_at) throw conflict('This question was removed from its lesson')
 
-    // Grade against the content that was shown: the session's version when it is this lesson's, else the latest.
-    const sessionVersion = session.lesson_version_id
-      ? get<LessonVersionRow>(
-          db,
-          'SELECT * FROM lesson_versions WHERE id = ? AND lesson_id = ?',
-          session.lesson_version_id,
-          item.lesson_id,
-        )
-      : undefined
-    const version = sessionVersion ?? latestVersion(db, item.lesson_id)
-    const block = versionBlocks(version).find((b) => b.id === item.block_id) as InteractiveBlock | undefined
-    if (!block) throw conflict('This question is not in the lesson version being studied')
+  // Grade against the content that was shown: the session's version when it is this lesson's, else the latest.
+  const sessionVersion = session.lesson_version_id
+    ? get<LessonVersionRow>(
+        db,
+        'SELECT * FROM lesson_versions WHERE id = ? AND lesson_id = ?',
+        session.lesson_version_id,
+        item.lesson_id,
+      )
+    : undefined
+  const version = sessionVersion ?? latestVersion(db, item.lesson_id)
+  const block = versionBlocks(version).find((b) => b.id === item.block_id) as InteractiveBlock | undefined
+  if (!block) throw conflict('This question is not in the lesson version being studied')
+  return { session, item, version, block }
+}
+
+/**
+ * Records an answer. `ai` is Claude's reading of a free-text answer the exact check marked wrong;
+ * when given it replaces that result, and the attempt's answer_json notes who graded it.
+ */
+export function recordAttempt(
+  db: Db,
+  input: z.infer<typeof AttemptInput>,
+  now = new Date(),
+  ai?: { grade: Grade; info: AiGrade },
+): AttemptResult {
+  const result = tx(db, () => {
+    const { session, item, version, block } = attemptContext(db, input)
 
     const confidence = input.confidence ?? null
-    const graded = grade(block, input.answer)
+    const graded = ai?.grade ?? grade(block, input.answer)
     const rating = rate(graded, confidence)
     const attemptId = newId()
     run(
@@ -88,7 +103,7 @@ export function recordAttempt(db: Db, input: z.infer<typeof AttemptInput>, now =
       item.id,
       session.id,
       version.id,
-      JSON.stringify(input.answer),
+      JSON.stringify(ai ? { ...(input.answer as object), ai_graded: ai.info } : input.answer),
       graded.is_correct,
       graded.score,
       confidence,
@@ -103,6 +118,8 @@ export function recordAttempt(db: Db, input: z.infer<typeof AttemptInput>, now =
       score: graded.score,
       rating,
       confidently_wrong: isConfidentlyWrong(graded, confidence),
+      feedback: ai?.info.feedback ?? null,
+      ai_graded: Boolean(ai),
       due_at: state?.due_at ?? null,
       state: state?.state ?? null,
       resolvedTopics: [] as string[],

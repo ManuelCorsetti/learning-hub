@@ -95,6 +95,12 @@ function Body({ block: b }: { block: Block }) {
           </pre>
           <p>
             Expected: <code>{b.expected_answer}</code>
+            {b.acceptable_answers.map((a) => (
+              <span key={a}>
+                {' · '}
+                <code>{a}</code>
+              </span>
+            ))}
           </p>
         </>
       )

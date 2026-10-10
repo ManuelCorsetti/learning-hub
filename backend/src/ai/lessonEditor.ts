@@ -107,6 +107,25 @@ function questionStats(db: Db, lessonId: string) {
   ).filter((s) => s.attempts > 0)
 }
 
+/** The person's latest answers to one question, with how each was graded, for a note about that block. */
+function blockAnswers(db: Db, lessonId: string, blockId: string) {
+  return all<{ answer_json: string; is_correct: number | null; score: number; confidence: number | null; answered_at: string }>(
+    db,
+    `SELECT a.answer_json, a.is_correct, a.score, a.confidence, a.answered_at
+     FROM attempts a JOIN review_items ri ON ri.id = a.review_item_id
+     WHERE ri.lesson_id = ? AND ri.block_id = ?
+     ORDER BY a.answered_at DESC LIMIT 3`,
+    lessonId,
+    blockId,
+  ).map((r) => ({
+    answer: JSON.parse(r.answer_json) as unknown,
+    was_marked: r.is_correct === null ? 'logged' : r.is_correct ? 'correct' : r.score >= 0.5 ? 'partly right' : 'wrong',
+    score: r.score,
+    confidence: r.confidence,
+    answered_at: r.answered_at,
+  }))
+}
+
 export async function sendLessonMessage(
   db: Db,
   lessonId: string,
@@ -130,6 +149,7 @@ export async function sendLessonMessage(
       ...topicContext(db, lesson.topic_id),
       lesson: { title: lesson.title, origin: lesson.origin, version: version.version_no, blocks },
       question_stats: questionStats(db, lessonId),
+      ...(input.block_id && { my_recent_answers_to_that_block: blockAnswers(db, lessonId, input.block_id) }),
       conversation: history,
       note: { message: input.message, about_block_id: input.block_id ?? null },
     },
@@ -149,7 +169,9 @@ export async function sendLessonMessage(
   // The note is saved with the reply, so a failed call leaves no orphan note; the panel keeps the text to resend.
   addMessage(db, lessonId, { role: 'user', content: input.message, block_id: input.block_id })
   let proposalId: string | null = null
-  const edit = editToOps(blocks, parseEditedBlocks(result.blocks_json).blocks, randomBlockId)
+  // "[]" means "no change", not "delete every block".
+  const edited = parseEditedBlocks(result.blocks_json).blocks
+  const edit = edited.length ? editToOps(blocks, edited, randomBlockId) : { ops: [] }
   if (edit.ops.length) {
     proposalId = newId()
     createProposals(db, runId, [

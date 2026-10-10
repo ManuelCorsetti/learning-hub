@@ -361,6 +361,9 @@ export interface AttemptResult {
   score: number
   rating: Rating | null
   confidently_wrong: boolean
+  /** One line from Claude when it graded a free-text answer the exact check had marked wrong; else null. */
+  feedback: string | null
+  ai_graded: boolean
   /** Next due date, or null for blocks that are not scheduled. */
   due_at: string | null
   state: ReviewState | null
