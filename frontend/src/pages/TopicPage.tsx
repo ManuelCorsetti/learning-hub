@@ -1,14 +1,14 @@
 // A topic as a page: its sub-topics as a learning path, its lessons, and everything from the
 // side panel (status, links, resources, goals, history) alongside.
 import { useState, type FormEvent } from 'react'
-import type { SubtopicItem, TopicDetail } from '../../../shared/api'
+import type { LessonView, SubtopicItem, TopicDetail } from '../../../shared/api'
 import { LESSON_LEVEL_LABELS } from '../../../shared/domain'
 import { api, useAction, useApi } from '../api'
 import { BuildLessonDialog } from '../components/BuildLessonDialog'
 import { Breadcrumbs, topicCrumbs } from '../components/Breadcrumbs'
 import { Goals, History, Links, ORIGIN_LABELS, Resources, Status } from '../components/TopicPanel'
 import { StatusPill, percent } from '../components/status'
-import { areaHref, lessonHref, topicHref } from '../router'
+import { areaHref, lessonHref, navigate, topicHref } from '../router'
 
 export function TopicPage({ topicId, aiAvailable }: { topicId: string; aiAvailable: boolean }) {
   const { data: topic, error } = useApi<TopicDetail>(`/topics/${topicId}`)
@@ -60,6 +60,7 @@ function Topic({ topic, aiAvailable }: { topic: TopicDetail; aiAvailable: boolea
                   : 'Plan a lesson with Claude: it uses your profile and what you already know.'}
               </span>
               <span className="spacer" />
+              <TestOut topic={topic} aiAvailable={aiAvailable} />
               <button
                 className="btn primary"
                 disabled={!aiAvailable || Boolean(topic.archived_at)}
@@ -76,7 +77,7 @@ function Topic({ topic, aiAvailable }: { topic: TopicDetail; aiAvailable: boolea
                 {topic.lessons.map((l, i) => (
                   <a key={l.id} className="card lesson-card" href={lessonHref(l.id)}>
                     <span className="card-label">
-                      Lesson {i + 1} · v{l.version_no}
+                      {l.origin === 'placement' ? 'Placement test' : `Lesson ${i + 1}`} · v{l.version_no}
                       {l.level && ` · ${LESSON_LEVEL_LABELS[l.level]}`}
                     </span>
                     <h3>{l.title}</h3>
@@ -117,6 +118,29 @@ function Topic({ topic, aiAvailable }: { topic: TopicDetail; aiAvailable: boolea
         </aside>
       </div>
     </div>
+  )
+}
+
+/** A short generated quiz for a topic you think you know; the answers become measured mastery. */
+function TestOut({ topic, aiAvailable }: { topic: TopicDetail; aiAvailable: boolean }) {
+  const { busy, error, run } = useAction()
+  const start = async () => {
+    const lesson = await run(() => api.post<LessonView>(`/topics/${topic.id}/placement`))
+    if (lesson) navigate(lessonHref(lesson.id))
+  }
+  return (
+    <>
+      <button
+        className="btn"
+        disabled={!aiAvailable || busy || Boolean(topic.archived_at)}
+        onClick={start}
+        title="Already know this? Take a short placement test and get measured mastery"
+      >
+        {busy ? <span className="spinner" /> : null} Test out
+      </button>
+      {busy && <span className="small muted">Claude is writing a placement test…</span>}
+      {error && <p className="error">{error}</p>}
+    </>
   )
 }
 

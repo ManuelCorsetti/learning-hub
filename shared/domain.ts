@@ -39,6 +39,7 @@ export const PROPOSAL_KINDS = [
   'archive_topic',
   'create_link',
   'remove_link',
+  'lesson_patch',
 ] as const
 export type ProposalKind = (typeof PROPOSAL_KINDS)[number]
 
@@ -53,10 +54,11 @@ export const AI_TASKS = [
   'generate_lesson',
   'lesson_patch',
   'optimise',
+  'placement',
 ] as const
 export type AiTask = (typeof AI_TASKS)[number]
 
-export const LESSON_ORIGINS = ['ai', 'user', 'imported_article'] as const
+export const LESSON_ORIGINS = ['ai', 'user', 'imported_article', 'placement'] as const
 export type LessonOrigin = (typeof LESSON_ORIGINS)[number]
 
 export const LESSON_AUTHORS = ['ai', 'user'] as const
@@ -79,6 +81,9 @@ export type BlockType = (typeof BLOCK_TYPES)[number]
 /** Diagram blocks can only use a key that has a React component in the frontend registry. */
 export const DIAGRAM_KEYS = ['star', 'schema', 'hierarchy', 'conformed', 'marketing'] as const
 export type DiagramKey = (typeof DIAGRAM_KEYS)[number]
+
+export const CHAT_ROLES = ['user', 'assistant'] as const
+export type ChatRole = (typeof CHAT_ROLES)[number]
 
 export const STUDY_SESSION_KINDS = ['lesson', 'review', 'placement'] as const
 export type StudySessionKind = (typeof STUDY_SESSION_KINDS)[number]

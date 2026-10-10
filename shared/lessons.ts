@@ -92,10 +92,27 @@ export type Lesson = z.infer<typeof Lesson>
 
 // What Claude returns. The server sets the topic and schema_version, and fills in missing ids.
 const generated = blockSchemas(z.string().nullable().describe('Leave null; the server assigns ids'))
-export const GeneratedLesson = z.object({
-  title: text,
-  blocks: z.array(z.discriminatedUnion('type', [...generated.teaching, ...generated.questions, generated.project_prompt])),
-})
+/** Any block as Claude writes it: id may be null. */
+export const GeneratedBlock = z.discriminatedUnion('type', [...generated.teaching, ...generated.questions, generated.project_prompt])
+export type GeneratedBlock = z.infer<typeof GeneratedBlock>
+/**
+ * A lesson as Claude edits it: the full block list, where "keep" stands for an unchanged block.
+ * Same shape as GeneratedLesson (one union of block types, never nested), which the API accepts.
+ */
+const edited = blockSchemas(
+  z.string().nullable().describe('The current id when this block replaces one and, for a question, still tests the same thing; null for a new block'),
+)
+export const EditedBlock = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('keep'), id: text.describe('id of an unchanged block of the current lesson') }),
+  ...edited.teaching,
+  ...edited.questions,
+  edited.project_prompt,
+])
+export type EditedBlock = z.infer<typeof EditedBlock>
+
+/** A question as Claude writes it (no project). */
+export const GeneratedQuestion = z.discriminatedUnion('type', [...generated.questions])
+export const GeneratedLesson = z.object({ title: text, blocks: z.array(GeneratedBlock) })
 export type GeneratedLesson = z.infer<typeof GeneratedLesson>
 
 /** Questions for a lesson that only has teaching blocks (e.g. an imported article). */
@@ -103,7 +120,7 @@ export const GeneratedQuestions = z.object({
   questions: z.array(
     z.object({
       after_block_id: text.describe('id of the teaching block this question follows'),
-      block: z.discriminatedUnion('type', [...generated.questions]),
+      block: GeneratedQuestion,
     }),
   ),
   project_prompt: generated.project_prompt,
@@ -121,9 +138,12 @@ const sameOrder = (a: string[], b: string[]) => a.length === b.length && a.every
 /**
  * The rules a lesson must follow beyond its schema. A lesson with no interactive
  * blocks (an imported article) is valid; once it has questions it needs exactly one
- * project_prompt, at the end.
+ * project_prompt, at the end. A placement test has no project (`requireProject: false`).
  */
-export function lessonProblems(blocks: { type: string; id: string | null }[]): string[] {
+export function lessonProblems(
+  blocks: { type: string; id: string | null }[],
+  { requireProject = true }: { requireProject?: boolean } = {},
+): string[] {
   const problems: string[] = []
   const typed = blocks as Block[]
   const ids = new Set<string>()
@@ -154,8 +174,10 @@ export function lessonProblems(blocks: { type: string; id: string | null }[]): s
     }
   })
   const interactive = typed.filter(isInteractive)
-  if (interactive.length) {
-    const prompts = typed.filter((b) => b.type === 'project_prompt')
+  const prompts = typed.filter((b) => b.type === 'project_prompt')
+  if (!requireProject) {
+    if (prompts.length) problems.push('a placement test has no project_prompt')
+  } else if (interactive.length) {
     if (prompts.length !== 1) problems.push(`the lesson needs exactly one project_prompt, found ${prompts.length}`)
     else if (typed.at(-1)?.type !== 'project_prompt') problems.push('the project_prompt must be the last block')
   }

@@ -8,6 +8,8 @@ Use the context you are given: the topic's summary, why the person cares, its ar
 
 The person's profile (if they wrote one) follows these instructions. Use their stack and use case for examples, snippets and the project wherever it fits naturally; keep the concepts themselves general enough to hold up outside their setup.
 
+my_notes are notes the person wrote on earlier lessons for this topic ("too abstract", "I already know snapshots"). Respect them in this lesson too.
+
 existing_lessons lists lessons already written for this topic, its parent and its prerequisites, with the concepts each covers. Build on them: do not re-teach what they cover, refer back to it in one clause where it helps, and go further.
 
 When "request" is present, the person planned this lesson with you before writing:

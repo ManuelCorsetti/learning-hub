@@ -2,7 +2,7 @@
 import { SOLID_MASTERY_THRESHOLD, type ReviewState, type TopicStatus } from '../../../shared/domain'
 import type { Measurement, TopicStatusInfo } from '../../../shared/api'
 import { all, type Db } from '../db/connection'
-import { retrievability } from './scheduler'
+import { activeWeights, retrievability } from './scheduler'
 
 export interface MeasurementInput {
   /** Scheduled, live review items for the topic. */
@@ -67,6 +67,7 @@ export function measureTopics(db: Db, topicIds: string[], now = new Date()): Map
       JSON.stringify(topicIds),
     )
     const nowIso = now.toISOString()
+    const w = activeWeights(db)
     for (const r of rows) {
       for (const id of [r.topic_id, r.parent_id]) {
         const input = id ? inputs.get(id) : undefined
@@ -75,7 +76,7 @@ export function measureTopics(db: Db, topicIds: string[], now = new Date()): Map
         if (r.state !== 'review') input.allInReview = false
         if (r.state === null) continue
         input.attemptedCount++
-        retention.get(id!)!.push(retrievability(r, now))
+        retention.get(id!)!.push(retrievability(r, now, w))
         if (r.due_at! <= nowIso) input.reviewsDue++
       }
     }

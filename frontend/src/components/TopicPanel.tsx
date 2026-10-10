@@ -168,7 +168,7 @@ export function Status({ topic }: { topic: TopicDetail }) {
   )
 }
 
-export const ORIGIN_LABELS = { ai: 'by Claude', user: 'yours', imported_article: 'imported article' } as const
+export const ORIGIN_LABELS = { ai: 'by Claude', user: 'yours', imported_article: 'imported article', placement: 'placement test' } as const
 
 export function Lessons({ topic }: { topic: TopicDetail }) {
   const { data: home } = useApi<HomeData>('/home')

@@ -56,7 +56,7 @@ export function App() {
         {route.page === 'review' && <ReviewPage aiAvailable={home.data?.aiAvailable ?? false} />}
         {route.page === 'goals' && <GoalsPage />}
         {route.page === 'lesson' && <LessonPage lessonId={route.lessonId} aiAvailable={home.data?.aiAvailable ?? false} />}
-        {route.page === 'practice' && <PracticePage />}
+        {route.page === 'practice' && <PracticePage aiAvailable={home.data?.aiAvailable ?? false} />}
         {route.page === 'settings' && <SettingsPage />}
         {route.page === 'topic' && <TopicPage topicId={route.topicId} aiAvailable={home.data?.aiAvailable ?? false} />}
       </main>

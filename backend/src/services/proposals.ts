@@ -7,6 +7,8 @@ import { all, get, run, tx, type Db } from '../db/connection'
 import { AppError, conflict, notFound, nowIso } from '../lib'
 import { createArea, getArea, updateArea } from './areas'
 import type { Ctx } from './events'
+import { applyPatch } from './lessonPatch'
+import { addVersion, getLesson, latestVersion, versionBlocks } from './lessons'
 import { createLink, getLink, removeLink } from './links'
 import { archiveTopic, createTopic, getTopic, mergeTopics, updateTopic } from './topics'
 
@@ -67,6 +69,15 @@ function scopeOf(
     case 'create_link': {
       const from = d.payload.from_topic_id
       return { target_type: 'topic_link', target_id: null, area_id: liveAreaId(db, topicAreaId(db, from)), topic_id: existingTopicId(db, from) }
+    }
+    case 'lesson_patch': {
+      const topicId = getLesson(db, d.payload.lesson_id)?.topic_id ?? null
+      return {
+        target_type: 'lesson',
+        target_id: d.payload.lesson_id,
+        area_id: topicId ? liveAreaId(db, topicAreaId(db, topicId)) : null,
+        topic_id: topicId ? existingTopicId(db, topicId) : null,
+      }
     }
     case 'remove_link': {
       const from = getLink(db, d.payload.link_id)?.from_topic_id
@@ -177,6 +188,23 @@ function apply(db: Db, row: ProposalRow): string {
     case 'remove_link': {
       const p = payloadOf({ ...row, kind: 'remove_link' })
       return removeLink(db, p.link_id).id
+    }
+    case 'lesson_patch': {
+      const p = payloadOf({ ...row, kind: 'lesson_patch' })
+      const latest = latestVersion(db, p.lesson_id)
+      if (latest.id !== p.base_version_id) {
+        throw conflict('The lesson has changed since this edit was suggested. Ask for it again.')
+      }
+      const { blocks, problems } = applyPatch(versionBlocks(latest), p.ops)
+      if (problems.length) throw new AppError(problems.join('; '))
+      return addVersion(db, p.lesson_id, {
+        blocks,
+        createdBy: 'ai',
+        changeNote: p.change_note,
+        basedOnVersionId: latest.id,
+        sourceProposalId: row.id,
+        aiRunId: row.ai_run_id,
+      })
     }
   }
 }
@@ -339,6 +367,14 @@ function describe(db: Db, row: ProposalRow): { description: string; detail: stri
         detail: null,
       }
     }
+    case 'lesson_patch': {
+      const p = payloadOf({ ...row, kind: 'lesson_patch' })
+      const title = getLesson(db, p.lesson_id)?.title ?? 'a lesson'
+      return {
+        description: `Edit lesson "${title}": ${p.change_note}`,
+        detail: `${p.ops.length} change${p.ops.length === 1 ? '' : 's'}. Open the lesson to see them.`,
+      }
+    }
     case 'remove_link': {
       const p = payloadOf({ ...row, kind: 'remove_link' })
       const link = getLink(db, p.link_id)
@@ -361,6 +397,7 @@ function toView(db: Db, row: ProposalRow): ProposalView {
     rationale: row.rationale,
     depends_on_id: row.depends_on_id,
     area_id: row.area_id,
+    lesson_id: row.kind === 'lesson_patch' ? row.target_id : null,
     decision_note: row.decision_note,
     created_at: row.created_at,
     decided_at: row.decided_at,
@@ -368,9 +405,11 @@ function toView(db: Db, row: ProposalRow): ProposalView {
 }
 
 export function listPendingGroups(db: Db): ProposalGroup[] {
-  const rows = all<ProposalRow & { task: string | null; run_created_at: string | null }>(
+  const rows = all<ProposalRow & { task: string | null; run_created_at: string | null; observations: string | null }>(
     db,
-    `SELECT p.*, r.task, r.created_at AS run_created_at FROM proposals p
+    `SELECT p.*, r.task, r.created_at AS run_created_at,
+       CASE WHEN r.task = 'optimise' THEN json_extract(r.result_json, '$.observations') END AS observations
+     FROM proposals p
      LEFT JOIN ai_runs r ON r.id = p.ai_run_id
      WHERE p.status = 'pending' ORDER BY coalesce(r.created_at, p.created_at) DESC, p.created_at, p.id`,
   )
@@ -382,6 +421,7 @@ export function listPendingGroups(db: Db): ProposalGroup[] {
         ai_run_id: row.ai_run_id,
         task: row.task,
         created_at: row.run_created_at ?? row.created_at,
+        observations: row.observations ? (JSON.parse(row.observations) as string[]) : [],
         proposals: [],
       })
     }

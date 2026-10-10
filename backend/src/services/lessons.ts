@@ -3,7 +3,7 @@
 import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
 import type { LessonAuthor, LessonLevel, LessonOrigin, ReviewState } from '../../../shared/domain'
-import type { ItemProgress, LessonSummary, LessonView } from '../../../shared/api'
+import type { ItemProgress, LessonSummary, LessonVersionSummary, LessonView } from '../../../shared/api'
 import { Block, LESSON_SCHEMA_VERSION, isInteractive, isScheduledType, lessonProblems } from '../../../shared/lessons'
 import { all, get, run, tx, type Db } from '../db/connection'
 import { AppError, clean, newId, notFound, nowIso } from '../lib'
@@ -40,6 +40,7 @@ export interface NewVersion {
   changeNote?: string | null
   basedOnVersionId?: string | null
   aiRunId?: string | null
+  sourceProposalId?: string | null
 }
 
 const shortId = () => randomBytes(4).toString('hex')
@@ -57,10 +58,10 @@ export function assignIds<T extends { type: string; id: string | null }>(blocks:
 }
 
 /** Schema + lesson rules. Throws a 400 listing every problem. */
-export function validateBlocks(blocks: unknown[]): Block[] {
+export function validateBlocks(blocks: unknown[], options: { requireProject?: boolean } = {}): Block[] {
   const parsed = z.array(Block).safeParse(blocks)
   if (!parsed.success) throw new AppError(`Invalid lesson: ${z.prettifyError(parsed.error)}`)
-  const problems = lessonProblems(parsed.data)
+  const problems = lessonProblems(parsed.data, options)
   if (problems.length) throw new AppError(`Invalid lesson: ${problems.join('; ')}`)
   return parsed.data
 }
@@ -114,7 +115,7 @@ export function addVersion(db: Db, lessonId: string, input: NewVersion): string 
   return tx(db, () => {
     const lesson = requireLesson(db, lessonId)
     if (lesson.archived_at) throw new AppError('This lesson is archived', 409)
-    const blocks = validateBlocks(assignIds(input.blocks))
+    const blocks = validateBlocks(assignIds(input.blocks), { requireProject: lesson.origin !== 'placement' })
     const items = all<{ block_id: string; block_type: string }>(
       db,
       'SELECT block_id, block_type FROM review_items WHERE lesson_id = ?',
@@ -135,8 +136,8 @@ export function addVersion(db: Db, lessonId: string, input: NewVersion): string 
     run(
       db,
       `INSERT INTO lesson_versions (id, lesson_id, version_no, schema_version, blocks_json, created_by, change_note,
-         based_on_version_id, ai_run_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         based_on_version_id, source_proposal_id, ai_run_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       versionId,
       lessonId,
       versionNo,
@@ -145,6 +146,7 @@ export function addVersion(db: Db, lessonId: string, input: NewVersion): string 
       input.createdBy,
       clean(input.changeNote),
       input.basedOnVersionId ?? null,
+      input.sourceProposalId ?? null,
       input.aiRunId ?? null,
       now,
     )
@@ -253,7 +255,6 @@ export function getLessonView(db: Db, lessonId: string): LessonView {
       due_at: r.due_at,
     }
   }
-  const versionCount = get<{ n: number }>(db, 'SELECT count(*) AS n FROM lesson_versions WHERE lesson_id = ?', lessonId)!.n
   return {
     id: lesson.id,
     title: lesson.title,
@@ -267,9 +268,35 @@ export function getLessonView(db: Db, lessonId: string): LessonView {
       change_note: version.change_note,
       created_at: version.created_at,
     },
-    versionCount,
+    versions: listVersions(db, lessonId),
     blocks: versionBlocks(version),
     items,
     measurement: measureTopics(db, [topic.id]).get(topic.id)!,
   }
+}
+
+export function listVersions(db: Db, lessonId: string): LessonVersionSummary[] {
+  return all<LessonVersionRow>(db, 'SELECT * FROM lesson_versions WHERE lesson_id = ? ORDER BY version_no DESC', lessonId).map(
+    (v) => ({
+      id: v.id,
+      version_no: v.version_no,
+      created_by: v.created_by,
+      change_note: v.change_note,
+      created_at: v.created_at,
+      questionCount: versionBlocks(v).filter((b) => isScheduledType(b.type)).length,
+    }),
+  )
+}
+
+/** Rollback: a new version that copies an older one. History is never rewritten. */
+export function restoreVersion(db: Db, lessonId: string, versionId: string): string {
+  const old = get<LessonVersionRow>(db, 'SELECT * FROM lesson_versions WHERE id = ? AND lesson_id = ?', versionId, lessonId)
+  if (!old) throw notFound('Lesson version')
+  if (latestVersion(db, lessonId).id === old.id) throw new AppError('That is already the current version', 409)
+  return addVersion(db, lessonId, {
+    blocks: versionBlocks(old),
+    createdBy: 'user',
+    basedOnVersionId: old.id,
+    changeNote: `Restored version ${old.version_no}`,
+  })
 }

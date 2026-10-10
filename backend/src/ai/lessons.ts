@@ -16,6 +16,7 @@ import { AppError } from '../lib'
 import { addVersion, createLesson, latestVersion, requireLesson, versionBlocks } from '../services/lessons'
 import { parentOf, requireLiveTopic, subtopicPath } from '../services/topics'
 import type { LessonRequestView } from '../../../shared/api'
+import { topicNotes } from '../services/coauthor'
 import { markBuilt, requireOpenRequest } from '../services/lessonRequests'
 import { callStructured } from './client'
 
@@ -85,6 +86,7 @@ export function topicContext(db: Db, topicId: string) {
     prerequisites: prerequisites.map((r) => r.title),
     related: related.map((r) => r.title),
     existing_lessons: lessonDigest(db, [topicId, ...(parent ? [parent.id] : []), ...prereqIds]),
+    my_notes: topicNotes(db, topicId),
     resources: all<{ kind: string; title: string; url: string | null; note: string | null }>(
       db,
       'SELECT kind, title, url, note FROM resources WHERE topic_id = ? AND archived_at IS NULL',

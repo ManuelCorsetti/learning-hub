@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { AcceptResult, ProposalGroup, ProposalView } from '../../../shared/api'
 import type { ProposalKind } from '../../../shared/domain'
 import { api, useAction, useApi } from '../api'
+import { OptimiseButton } from '../components/OptimiseButton'
 import { formatDateTime } from '../components/status'
 
 const KIND_LABELS: Record<ProposalKind, string> = {
@@ -14,9 +15,10 @@ const KIND_LABELS: Record<ProposalKind, string> = {
   archive_topic: 'Archive',
   create_link: 'Link',
   remove_link: 'Unlink',
+  lesson_patch: 'Lesson edit',
 }
 
-const TASK_LABELS: Record<string, string> = { capture: 'Capture', organise: 'Organise' }
+const TASK_LABELS: Record<string, string> = { capture: 'Capture', organise: 'Organise', lesson_patch: 'Co-author', optimise: 'Optimise' }
 
 export function ReviewPage({ aiAvailable }: { aiAvailable: boolean }) {
   const { data, error } = useApi<{ pending: ProposalGroup[]; recent: ProposalView[] }>('/proposals')
@@ -42,6 +44,7 @@ export function ReviewPage({ aiAvailable }: { aiAvailable: boolean }) {
         </button>
         {organise.busy && <span className="muted small">Claude is looking across your whole map. This can take up to a minute.</span>}
       </div>
+      <OptimiseButton aiAvailable={aiAvailable} />
       {organise.error && <p className="error">{organise.error}</p>}
       {error && <p className="error">{error}</p>}
       {data && total === 0 && <p className="empty">Nothing waiting. Capture some ideas on the home page, or run Organise.</p>}
@@ -100,6 +103,13 @@ function RunGroup({ group }: { group: ProposalGroup }) {
           Accept all
         </button>
       </div>
+      {group.observations.length > 0 && (
+        <ul className="observations run-observations">
+          {group.observations.map((o, i) => (
+            <li key={i}>{o}</li>
+          ))}
+        </ul>
+      )}
       {group.proposals.map((p) => (
         <ProposalRow key={p.id} proposal={p} dependsOn={p.depends_on_id ? titleOf(p.depends_on_id) : null} />
       ))}
@@ -125,6 +135,11 @@ function ProposalRow({ proposal: p, dependsOn }: { proposal: ProposalView; depen
       <div className="what">
         <b>{p.description}</b>
         {p.detail && <p>{p.detail}</p>}
+        {p.lesson_id && (
+          <p>
+            <a href={`#/lessons/${p.lesson_id}`}>Open the lesson</a> to see the diff.
+          </p>
+        )}
         {p.rationale && <p className="why">{p.rationale}</p>}
         {dependsOn && <p className="small">Applied after: {dependsOn}</p>}
         {error && <p className="error">{error}</p>}

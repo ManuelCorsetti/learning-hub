@@ -1,8 +1,10 @@
 // Settings: which Claude model to use, and the profile Claude reads before every task.
 import { useEffect, useState, type FormEvent } from 'react'
-import type { Profile, SettingsView } from '../../../shared/api'
+import type { Profile, SchedulerView, SettingsView } from '../../../shared/api'
 import { MODEL_LABELS, type Model } from '../../../shared/domain'
 import { api, useAction, useApi } from '../api'
+import { AiRuns } from '../components/AiRuns'
+import { formatDate } from '../components/status'
 
 const FIELDS: { key: keyof Profile; label: string; hint: string }[] = [
   {
@@ -45,7 +47,74 @@ export function SettingsPage() {
       </p>
       <ModelChoice settings={data} />
       <ProfileForm key={JSON.stringify(data.profile)} profile={data.profile} />
+      <Scheduler />
+      <AiRuns />
     </>
+  )
+}
+
+const RATINGS = ['Again', 'Hard', 'Good', 'Easy']
+const days = (d: number) => (d < 1 ? `${Math.round(d * 24)} h` : `${d < 10 ? d.toFixed(1) : Math.round(d)} d`)
+
+function Scheduler() {
+  const { data } = useApi<SchedulerView>('/scheduler')
+  const { busy, error, run } = useAction()
+  if (!data) return null
+  const ready = data.ratedReviews >= data.minReviews
+  return (
+    <section>
+      <div className="section-head">
+        <h2>Review scheduler</h2>
+        <span>FSRS decides when each question comes back. It starts with default parameters.</span>
+      </div>
+      <p className="small muted" style={{ maxWidth: 720 }}>
+        With enough history, Learning Studio fits how long your memories last after a first answer, per rating, and
+        rebuilds every schedule from your answers. {data.ratedReviews} rated review{data.ratedReviews === 1 ? '' : 's'} so far
+        {ready ? '.' : `; fitting needs ${data.minReviews}.`}
+      </p>
+      <table className="params">
+        <thead>
+          <tr>
+            <th>First answer</th>
+            {RATINGS.map((r) => (
+              <th key={r}>{r}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>{data.personal ? 'Yours' : 'Default'}</td>
+            {data.initialStability.map((s, i) => (
+              <td key={i}>{days(s)}</td>
+            ))}
+          </tr>
+          {data.personal && (
+            <tr className="muted">
+              <td>Default</td>
+              {data.defaultInitialStability.map((s, i) => (
+                <td key={i}>{days(s)}</td>
+              ))}
+            </tr>
+          )}
+        </tbody>
+      </table>
+      <div className="row" style={{ marginTop: 12 }}>
+        <button className="btn" disabled={busy || !ready} onClick={() => run(() => api.post('/scheduler/fit'))}>
+          Fit my parameters
+        </button>
+        {data.personal && (
+          <button className="btn link" disabled={busy} onClick={() => run(() => api.post('/scheduler/reset'))}>
+            Back to defaults
+          </button>
+        )}
+        {data.personal && (
+          <span className="small muted">
+            Fitted on {data.personal.trained_on_attempts} reviews, {formatDate(data.personal.created_at)}
+          </span>
+        )}
+      </div>
+      {error && <p className="error">{error}</p>}
+    </section>
   )
 }
 

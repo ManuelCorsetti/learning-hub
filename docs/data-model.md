@@ -388,18 +388,19 @@ erDiagram
 | `goals` | 1 | Only `active` goals count towards Next up. | `status`: `active` · `achieved` · `dropped` |
 | `topic_goals` | 1 | Many-to-many join. | – |
 | `resources` | 1 | Needs at least one of `url` or `note`. | `kind`: `link` · `book` · `video` · `course` · `note` |
-| `ai_runs` | 1 | One row per logical call. `attempts_log` holds each try's raw output and validation error, which is the material for prompt tuning. | `task`: `capture` · `organise` · `next_up_why` · `plan_lesson` · `generate_lesson` · `lesson_patch` · `optimise`. `model` is the model chosen in `settings` at call time. `outcome`: `ok` · `invalid` · `error` |
-| `proposals` | 1 | `target_type` + `target_id` is a loose reference with no foreign key. Payload v2: `create_topic` may set `parent_topic_id`, and accepting it also links the new topic under that parent. `area_id` / `topic_id` are real foreign keys used for scoping ("2 suggestions to review"). `applied_entity_id` records what accepting the proposal created. | `kind`: `create_topic` · `update_topic` · `move_topic` · `merge_topics` · `archive_topic` · `create_area` · `update_area` · `create_link` · `remove_link` · `lesson_patch` (P3). `status`: `pending` · `accepted` · `rejected` · `superseded` · `failed` |
+| `ai_runs` | 1 | One row per logical call. `attempts_log` holds each try's raw output and validation error, which is the material for prompt tuning. | `task`: `capture` · `organise` · `next_up_why` · `plan_lesson` · `generate_lesson` · `lesson_patch` · `optimise` · `placement`. `model` is the model chosen in `settings` at call time. `outcome`: `ok` · `invalid` · `error` |
+| `proposals` | 1 | `target_type` + `target_id` is a loose reference with no foreign key. Payload v2: `create_topic` may set `parent_topic_id`, and accepting it also links the new topic under that parent. `lesson_patch` holds `lesson_id`, `base_version_id`, `change_note` and block operations (`replace`, `add`, `remove`, `move`); accepting applies them to the base version as a new version, and fails if the lesson has a newer version. `area_id` / `topic_id` are real foreign keys used for scoping ("2 suggestions to review"). `applied_entity_id` records what accepting the proposal created. | `kind`: `create_topic` · `update_topic` · `move_topic` · `merge_topics` · `archive_topic` · `create_area` · `update_area` · `create_link` · `remove_link` · `lesson_patch` (P3). `status`: `pending` · `accepted` · `rejected` · `superseded` · `failed` |
 | `ai_text_cache` | 1 | Reused while `input_hash` (a hash of the facts the text was written from) is unchanged. | `purpose`: `next_up_why` |
-| `lessons` | 2 | One topic can have several lessons. | `origin`: `ai` · `user` · `imported_article` |
+| `lessons` | 2 | One topic can have several lessons. A placement test is a lesson with `origin = placement`: one concept block (its scope) and questions, no project. | `origin`: `ai` · `user` · `imported_article` · `placement` |
 | `lesson_versions` | 2 | Append-only. Rollback or patch = a new row with `based_on_version_id`. The latest version is the highest `version_no`. | `created_by`: `ai` · `user` |
 | `review_items` | 2 | One per interactive block id per lesson. Created the first time that block id appears. Retired when a later version drops it. | `block_type` = the block's `type` |
-| `study_sessions` | 2 | Groups attempts. `lesson_version_id` is set only when `kind = lesson`. | `kind`: `lesson` · `review` · `placement` |
+| `study_sessions` | 2 | Groups attempts. `lesson_version_id` is set when `kind` is `lesson` or `placement`. | `kind`: `lesson` · `review` · `placement` |
 | `attempts` | 2 | Immutable. `rating` is stored, not recomputed, so replaying attempts gives the same schedule even if the mapping rules change later. | `confidence`: 1 guessing · 2 fairly sure · 3 certain. `rating`: 1 Again · 2 Hard · 3 Good · 4 Easy |
 | `review_item_state` | 2 | **Derived cache.** Rebuild it by replaying attempts in time order through the scheduler named in `scheduler_version`. | `state`: `new` · `learning` · `review` · `relearning` |
 | `settings` | 2.5 | Key/value app settings: `model` (the Claude model id) and `profile` (the learner profile sent with every Claude call). | – |
 | `lesson_requests` | 2.5 | The Build lesson conversation: level, brief, planner turns and the latest plan. `lesson_id` is set once built. A working record, so `messages_json` grows while `status = open`. | `level`: `fundamentals` · `applied` · `advanced`. `status`: `open` · `built` · `abandoned` |
-| `chat_threads`, `chat_messages` | 3 | Co-author conversations. An assistant message may carry a `lesson_patch` proposal. | `role`: `user` · `assistant` |
+| `chat_threads`, `chat_messages` | 3 | Co-author notes, one thread per lesson. A user message may be about one block (`block_id`). An assistant message may carry a `lesson_patch` proposal. User messages are also sent with future lessons for the topic. | `role`: `user` · `assistant` |
+| `scheduler_params` | 3 | Fitted FSRS weights; at most one active per scheduler. Activating or deactivating a row replays every attempt. `params_json` holds `{ method, w, pairs }`. | – |
 
 ### Business rules
 
@@ -763,19 +764,20 @@ CREATE TABLE chat_threads (
   archived_at  TEXT,
   created_at   TEXT NOT NULL
 );
+CREATE INDEX ix_chat_threads_lesson ON chat_threads (lesson_id);
 
 CREATE TABLE chat_messages (
   id           TEXT PRIMARY KEY,
   thread_id    TEXT NOT NULL REFERENCES chat_threads (id),
   role         TEXT NOT NULL,
   content      TEXT NOT NULL,
+  block_id     TEXT,                              -- the block a note is about, if any
   proposal_id  TEXT REFERENCES proposals (id),
   ai_run_id    TEXT REFERENCES ai_runs (id),
   created_at   TEXT NOT NULL
 );
 CREATE INDEX ix_chat_messages_thread ON chat_messages (thread_id, created_at);
 
--- Optional, once there are enough reviews to fit personal FSRS parameters
 CREATE TABLE scheduler_params (
   id                   TEXT PRIMARY KEY,
   scheduler            TEXT NOT NULL,
