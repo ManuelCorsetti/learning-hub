@@ -81,6 +81,16 @@ describe('recording a free-text answer', () => {
     item = get<{ id: string }>(db, 'SELECT id FROM review_items WHERE lesson_id = ? AND block_id = ?', lessonId, 'q-code')!.id
   })
 
+  it('records an answer to a code question saved before acceptable_answers existed', async () => {
+    const { acceptable_answers: _, ...legacy } = code()
+    db.prepare("UPDATE lesson_versions SET blocks_json = replace(blocks_json, ',\"acceptable_answers\":[]', '')").run()
+    expect(get<{ b: string }>(db, 'SELECT blocks_json AS b FROM lesson_versions')!.b).not.toContain('acceptable_answers')
+    expect(JSON.stringify(legacy)).not.toContain('acceptable_answers')
+    callStructured.mockResolvedValue({ runId: 'run-old', result: { verdict: 'wrong', score: 0.1, feedback: 'No.' } })
+    expect(await attempt({ text: 'Point(x="3", y=0)' })).toMatchObject({ is_correct: true, ai_graded: false })
+    expect(await attempt({ text: 'Line(1)' })).toMatchObject({ is_correct: false, ai_graded: true })
+  })
+
   it('does not ask Claude when the exact check passes', async () => {
     const result = await attempt({ text: 'Point(x="3", y=0)' })
     expect(result).toMatchObject({ is_correct: true, rating: 3, ai_graded: false, feedback: null })
