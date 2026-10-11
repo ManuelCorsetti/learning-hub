@@ -184,6 +184,7 @@ describe('grading and rating', () => {
       question: 'q',
       snippet: 's',
       expected_answer: 'SELECT a, b FROM t;',
+      acceptable_answers: [],
       hint: 'h',
     }
     expect(grade(code, { text: 'select a,b  from t' }).is_correct).toBe(true)

@@ -41,7 +41,14 @@ export interface StructuredCall<T> {
   /** Checks that need the database, e.g. "every id refers to a real topic". */
   check?: (output: T) => string[]
   effort?: 'low' | 'medium' | 'high'
+  /** Overrides the model chosen in Settings, e.g. a small model for a narrow task. */
+  model?: string
+  /** Send the learner profile as a second system block. Default true. */
+  profile?: boolean
 }
+
+/** Haiku 5.5 has no server-side refusal fallback: the `fallbacks` parameter and its beta must not be sent. */
+export const supportsServerFallback = (model: string): boolean => !model.includes('haiku')
 
 export class AiError extends AppError {
   constructor(
@@ -56,8 +63,8 @@ export async function callStructured<T>(db: Db, call: StructuredCall<T>): Promis
   const runId = newId()
   const prompt = loadPrompt(call.promptName)
   const effort = call.effort ?? 'medium'
-  const model = currentModel(db)
-  const profile = profileText(db)
+  const model = call.model ?? currentModel(db)
+  const profile = call.profile === false ? null : profileText(db)
   // The learner profile travels with every call as a second system block, after the task prompt.
   const system: Anthropic.Beta.BetaTextBlockParam[] = [{ type: 'text', text: prompt.text }]
   if (profile) {
@@ -114,8 +121,7 @@ export async function callStructured<T>(db: Db, call: StructuredCall<T>): Promis
         messages,
         output_config: { effort, format: betaZodOutputFormat(call.schema) },
         // If a safety classifier declines, retry server-side on Anthropic's recommended fallback model.
-        betas: ['server-side-fallback-2026-07-01'],
-        fallbacks: 'default',
+        ...(supportsServerFallback(model) && { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const }),
       })
     } catch (err) {
       attempts.push({ raw_output: null, stop_reason: null, validation_errors: [describeApiError(err)] })

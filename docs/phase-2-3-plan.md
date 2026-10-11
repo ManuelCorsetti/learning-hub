@@ -16,7 +16,7 @@ Follows on from [phase-1-plan.md](phase-1-plan.md) and uses the tables in
   `npm run ai:lesson -- "Topic" --brief "…"`.
 - **Phase 3 is built** (build steps 19–23; question variants, the optional
   item, is not). Its stop-for-review steps still need real runs, since the build
-  had no API key: the co-author prompt (`prompts/lesson_editor.txt`) and diff,
+  had no API key (the free-text grading by `prompts/answer_grader.txt` too): the co-author prompt (`prompts/lesson_editor.txt`) and diff,
   `prompts/optimise.txt` and `prompts/placement.txt`.
 
 Where Phase 2 lives:
@@ -140,7 +140,7 @@ types**: the original 7 plus 2 that the existing article format needs.
 | `quiz_mcq` | `id`, `question`, `options` (exactly 4), `correct_index` (0–3), `pitfall_note` | exact |
 | `quiz_true_false` | `id`, `statement`, `answer`, `pitfall_note` | exact |
 | `fill_in_blank` | `id`, `sentence` (contains `___`), `acceptable_answers` (≥ 1) | case-insensitive, trimmed |
-| `code_challenge` | `id`, `language`, `question`, `snippet`, `expected_answer`, `hint` | normalised text compare (case, whitespace, spaces around punctuation and a trailing `;` ignored), never executed. `question` was added during the build: the snippet alone does not say what to work out |
+| `code_challenge` | `id`, `language`, `question`, `snippet`, `expected_answer`, `acceptable_answers` (default `[]`, so older lessons still parse), `hint` | normalised text compare against `expected_answer` and `acceptable_answers` (case, whitespace, spaces around punctuation, a trailing `;` and the choice between `'` and `"` ignored), never executed. When the exact check fails, `claude-haiku-5-5` (low effort, no fallbacks) grades a `fill_in_blank` or `code_challenge` answer as correct / partly / wrong with a score and one line of feedback; the result feeds `rate()`, and `answer_json` records `ai_graded` with the run id. With no AI, or on failure, the exact result stands. `question` was added during the build: the snippet alone does not say what to work out |
 | `ordering` | `id`, `prompt`, `items_shuffled`, `correct_order` | score = share of items in the correct position |
 | `project_prompt` | `id`, `description`, `success_criteria` (≥ 1) | self-ticked checklist. Logged, **not scheduled**, not part of mastery |
 

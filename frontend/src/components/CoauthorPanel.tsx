@@ -5,6 +5,7 @@ import type { ChatMessageView, LessonPatchView, LessonView, PatchChange } from '
 import type { Block } from '../../../shared/lessons'
 import { api, useAction, useApi } from '../api'
 import { BlockPreview, blockKind } from './lesson/BlockPreview'
+import { Markdown } from './lesson/Markdown'
 import { formatDateTime } from './status'
 
 const blockLabel = (b: Block | undefined) => (b ? ('title' in b ? b.title : blockKind(b)) : 'a block')
@@ -12,12 +13,15 @@ const blockLabel = (b: Block | undefined) => (b ? ('title' in b ? b.title : bloc
 export function CoauthorPanel({
   lesson,
   blockId,
+  draft,
   setBlockId,
   aiAvailable,
   onClose,
 }: {
   lesson: LessonView
   blockId: string | null
+  /** Text to start the note with, e.g. from Discuss on a question. */
+  draft?: string
   setBlockId: (id: string | null) => void
   aiAvailable: boolean
   onClose: () => void
@@ -51,7 +55,7 @@ export function CoauthorPanel({
       </div>
       {error && <p className="error">{error}</p>}
       {tab === 'notes' ? (
-        <Notes lesson={lesson} messages={messages ?? []} blockId={blockId} setBlockId={setBlockId} aiAvailable={aiAvailable} />
+        <Notes lesson={lesson} messages={messages ?? []} blockId={blockId} draft={draft} setBlockId={setBlockId} aiAvailable={aiAvailable} />
       ) : (
         <History lesson={lesson} />
       )}
@@ -63,17 +67,22 @@ function Notes({
   lesson,
   messages,
   blockId,
+  draft,
   setBlockId,
   aiAvailable,
 }: {
   lesson: LessonView
   messages: ChatMessageView[]
   blockId: string | null
+  draft?: string
   setBlockId: (id: string | null) => void
   aiAvailable: boolean
 }) {
-  const [text, setText] = useState('')
+  const [text, setText] = useState(draft ?? '')
   const { busy, error, run } = useAction()
+  useEffect(() => {
+    if (draft) setText(draft)
+  }, [draft, blockId])
   const byId = new Map(lesson.blocks.map((b) => [b.id, b]))
   const send = async (e: FormEvent) => {
     e.preventDefault()
@@ -96,7 +105,7 @@ function Notes({
           </div>
         ) : (
           <div key={m.id} className="chat-msg assistant">
-            <p>{m.content}</p>
+            <Markdown text={m.content} />
             {m.patch && <PatchCard patch={m.patch} />}
           </div>
         ),
@@ -117,6 +126,7 @@ function Notes({
         )}
         <textarea
           rows={3}
+          autoFocus={Boolean(draft)}
           value={text}
           disabled={busy || !aiAvailable}
           onChange={(e) => setText(e.target.value)}

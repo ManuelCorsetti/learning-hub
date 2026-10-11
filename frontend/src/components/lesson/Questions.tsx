@@ -48,10 +48,13 @@ export function QuestionCard({
   block,
   progress,
   onSubmit,
+  onDiscuss,
 }: {
   block: InteractiveBlock
   progress?: ItemProgress
   onSubmit: SubmitAttempt
+  /** Opens the lesson's Notes & edits on this question, with a note about the answer just given. */
+  onDiscuss?: (note: string) => void
 }) {
   const [draft, setDraft] = useState<Draft>(() => emptyDraft(block))
   const [result, setResult] = useState<AttemptResult | null>(null)
@@ -95,7 +98,14 @@ export function QuestionCard({
             </div>
           </div>
         ))}
-      {result && <Feedback block={block} result={result} onRetry={reset} />}
+      {result && (
+        <Feedback
+          block={block}
+          result={result}
+          onRetry={reset}
+          onDiscuss={onDiscuss && (() => onDiscuss(discussNote(block, draft, result)))}
+        />
+      )}
       {error && <p className="error">{error}</p>}
     </div>
   )
@@ -302,7 +312,26 @@ function ProjectPrompt({ block, draft, setDraft, locked }: WidgetProps<'project_
   )
 }
 
-function Feedback({ block, result, onRetry }: { block: InteractiveBlock; result: AttemptResult; onRetry: () => void }) {
+const markedAs = (result: AttemptResult) =>
+  result.is_correct ? 'correct' : result.score >= 0.5 ? 'partly right' : 'wrong'
+
+/** The first line of a note about an answer; the person adds their own question after it. */
+function discussNote(block: InteractiveBlock, draft: Draft, result: AttemptResult): string {
+  const given = block.type === 'fill_in_blank' || block.type === 'code_challenge' ? ` “${String(draft).trim()}”` : ''
+  return `About my answer${given}, which was marked ${markedAs(result)}: `
+}
+
+function Feedback({
+  block,
+  result,
+  onRetry,
+  onDiscuss,
+}: {
+  block: InteractiveBlock
+  result: AttemptResult
+  onRetry: () => void
+  onDiscuss?: () => void
+}) {
   const head =
     result.is_correct === null
       ? `Logged: ${Math.round(result.score * 100)}% of the criteria met. Projects are not scheduled.`
@@ -315,6 +344,11 @@ function Feedback({ block, result, onRetry }: { block: InteractiveBlock; result:
     <div className="feedback">
       <b>{head}</b>
       {result.confidently_wrong && <span className="small"> You were certain, so this one is worth a closer look.</span>}
+      {result.feedback && (
+        <p className="ai-feedback">
+          {result.feedback} <span className="tag">graded by Claude</span>
+        </p>
+      )}
       {(block.type === 'quiz_mcq' || block.type === 'quiz_true_false') && (
         <p>
           <Inline text={block.pitfall_note} />
@@ -326,6 +360,12 @@ function Feedback({ block, result, onRetry }: { block: InteractiveBlock; result:
       {block.type === 'code_challenge' && (
         <p>
           Expected: <code>{block.expected_answer}</code>
+          {block.acceptable_answers.map((a) => (
+            <span key={a}>
+              {' · '}
+              <code>{a}</code>
+            </span>
+          ))}
           {!result.is_correct && <> · Hint: {block.hint}</>}
         </p>
       )}
@@ -335,6 +375,11 @@ function Feedback({ block, result, onRetry }: { block: InteractiveBlock; result:
         <button className="btn link small" onClick={onRetry}>
           Answer again
         </button>
+        {onDiscuss && block.type !== 'project_prompt' && (
+          <button className="btn link small" onClick={onDiscuss}>
+            Discuss
+          </button>
+        )}
       </div>
     </div>
   )

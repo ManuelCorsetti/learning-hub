@@ -35,7 +35,7 @@ const label = (i: number) => String(i + 1).padStart(2, '0')
 export function LessonPage({ lessonId, aiAvailable }: { lessonId: string; aiAvailable: boolean }) {
   const { data: lesson, error } = useApi<LessonView>(`/lessons/${lessonId}`)
   // Kept outside <Lesson> so the panel stays open when an accepted edit loads the new version.
-  const [coauthor, setCoauthor] = useState<{ open: boolean; blockId: string | null }>({ open: false, blockId: null })
+  const [coauthor, setCoauthor] = useState<{ open: boolean; blockId: string | null; draft?: string }>({ open: false, blockId: null })
   if (error) return <p className="error">{error}</p>
   if (!lesson) return <p className="muted">Loading…</p>
   return (
@@ -44,12 +44,13 @@ export function LessonPage({ lessonId, aiAvailable }: { lessonId: string; aiAvai
         key={lesson.version.id}
         lesson={lesson}
         aiAvailable={aiAvailable}
-        onNote={(blockId) => setCoauthor({ open: true, blockId })}
+        onNote={(blockId, draft) => setCoauthor({ open: true, blockId, draft })}
       />
       {coauthor.open && (
         <CoauthorPanel
           lesson={lesson}
           blockId={coauthor.blockId}
+          draft={coauthor.draft}
           setBlockId={(blockId) => setCoauthor({ open: true, blockId })}
           aiAvailable={aiAvailable}
           onClose={() => setCoauthor({ open: false, blockId: null })}
@@ -59,7 +60,7 @@ export function LessonPage({ lessonId, aiAvailable }: { lessonId: string; aiAvai
   )
 }
 
-function Lesson({ lesson, aiAvailable, onNote }: { lesson: LessonView; aiAvailable: boolean; onNote: (blockId: string | null) => void }) {
+function Lesson({ lesson, aiAvailable, onNote }: { lesson: LessonView; aiAvailable: boolean; onNote: (blockId: string | null, draft?: string) => void }) {
   const placement = lesson.origin === 'placement'
   const record = useStudySession(placement ? 'placement' : 'lesson', lesson.version.id)
   const { sections, project } = toSections(lesson.blocks)
@@ -80,6 +81,7 @@ function Lesson({ lesson, aiAvailable, onNote }: { lesson: LessonView; aiAvailab
             block={b}
             progress={lesson.items[b.id]}
             onSubmit={(answer, confidence) => record(lesson.items[b.id].review_item_id, answer, confidence)}
+            onDiscuss={(note) => onNote(b.id, note)}
           />
         )
     }

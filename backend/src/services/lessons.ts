@@ -86,7 +86,9 @@ export function latestVersion(db: Db, lessonId: string): LessonVersionRow {
   return v
 }
 
-export const versionBlocks = (v: Pick<LessonVersionRow, 'blocks_json'>): Block[] => JSON.parse(v.blocks_json) as Block[]
+/** Stored blocks as the current schema reads them: fields added later (acceptable_answers) default in. */
+export const versionBlocks = (v: Pick<LessonVersionRow, 'blocks_json'>): Block[] =>
+  (JSON.parse(v.blocks_json) as Block[]).map((b) => (b.type === 'code_challenge' ? { ...b, acceptable_answers: b.acceptable_answers ?? [] } : b))
 
 export function createLesson(
   db: Db,

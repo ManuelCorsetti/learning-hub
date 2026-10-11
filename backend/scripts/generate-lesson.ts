@@ -93,7 +93,7 @@ function describe(b: Block): string {
     case 'fill_in_blank':
       return `Q (fill) ${b.sentence}  → ${b.acceptable_answers.join(' | ')}`
     case 'code_challenge':
-      return `Q (code, ${b.language}) ${b.question}\n${b.snippet}\n  → ${b.expected_answer}  (hint: ${b.hint})`
+      return `Q (code, ${b.language}) ${b.question}\n${b.snippet}\n  → ${[b.expected_answer, ...b.acceptable_answers].join(' | ')}  (hint: ${b.hint})`
     case 'ordering':
       return `Q (ordering) ${b.prompt}\n  shown: ${b.items_shuffled.join(' · ')}\n  right: ${b.correct_order.join(' → ')}`
     case 'project_prompt':

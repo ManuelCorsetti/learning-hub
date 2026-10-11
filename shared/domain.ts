@@ -55,6 +55,7 @@ export const AI_TASKS = [
   'lesson_patch',
   'optimise',
   'placement',
+  'grade_answer',
 ] as const
 export type AiTask = (typeof AI_TASKS)[number]
 
