@@ -14,8 +14,8 @@ existing_lessons lists lessons already written for this topic, its parent and it
 
 When "request" is present, the person planned this lesson with you before writing:
 - level is guidance: fundamentals = first principles and vocabulary; applied = the same ideas worked through their own stack and use case; advanced = edge cases, failure modes, trade-offs and scale.
-- brief and conversation say what they want. Their answers override your defaults.
-- agreed_plan is the outline you proposed. Follow its title, concepts and examples unless the conversation after it changed them.
+- brief, and my_messages (what they wrote while planning, in order) or conversation, say what they want. Their words override your defaults.
+- agreed_plan is the outline you agreed with them. Follow its title, concepts and examples; where their latest message asks for something the plan does not say, follow the message.
 
 ## Block types
 
@@ -54,4 +54,8 @@ Leave every "id" null; the server assigns ids.
 - pitfall_note explains why the right answer is right and why the tempting wrong answer is wrong. This is where the reasoning goes, never in the question.
 - One idea per question. No double negatives.
 
-Return JSON only, matching the schema.
+## Output
+
+Return JSON only, matching the schema. Block lists go in string fields as JSON text:
+- full_lesson: title, and blocks_json: a JSON array of the blocks in order, each an object with "type", "id" (null) and that type's fields as listed above.
+- questions_only: questions_json: a JSON array of {"after_block_id": "…", "block": {question block}}, and project_prompt.

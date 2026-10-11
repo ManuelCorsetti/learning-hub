@@ -1,7 +1,7 @@
 // Placement test ("test out"): a short quiz on a topic you say you already know. It is stored
 // as a lesson with origin placement, so the answers schedule reviews and measure mastery.
 import { z } from 'zod'
-import { GeneratedQuestion, lessonProblems } from '../../../shared/lessons'
+import { GeneratedQuestion, lessonProblems, parseJsonArray } from '../../../shared/lessons'
 import type { Db } from '../db/connection'
 import { createLesson } from '../services/lessons'
 import { requireLiveTopic } from '../services/topics'
@@ -10,11 +10,20 @@ import { topicContext } from './lessons'
 
 export const PLACEMENT_QUESTIONS = { min: 5, max: 12 }
 
-export const PlacementOutput = z.object({
-  scope: z.string().min(1).max(1500).describe('Markdown: two or three sentences on what this test covers and at what depth'),
-  questions: z.array(GeneratedQuestion),
-})
+const scope = z.string().min(1).max(1500).describe('Markdown: two or three sentences on what this test covers and at what depth')
+export const PlacementOutput = z.object({ scope, questions: z.array(GeneratedQuestion) })
 export type PlacementOutput = z.infer<typeof PlacementOutput>
+/** What Claude sends: the questions as a JSON string (see LessonReply in shared/lessons.ts). */
+export const PlacementReply = z.object({
+  scope,
+  questions_json: z.string().describe('JSON array (as a string) of question blocks'),
+})
+export type PlacementReply = z.infer<typeof PlacementReply>
+
+export function decodePlacement(out: PlacementReply): { value: PlacementOutput; problems: string[] } {
+  const { items, problems } = parseJsonArray(out.questions_json, GeneratedQuestion, 'questions_json')
+  return { value: { scope: out.scope, questions: items }, problems }
+}
 
 export function placementBlocks(out: PlacementOutput) {
   return [
@@ -34,14 +43,18 @@ export function checkPlacement(out: PlacementOutput): string[] {
 
 export async function generatePlacement(db: Db, topicId: string): Promise<{ lessonId: string; runId: string }> {
   const topic = requireLiveTopic(db, topicId)
-  const { runId, result } = await callStructured(db, {
+  const { runId, result: reply } = await callStructured(db, {
     task: 'placement',
     promptName: 'placement',
-    schema: PlacementOutput,
+    schema: PlacementReply,
     input: { ...topicContext(db, topicId), status_you_set: topic.status_override },
-    check: checkPlacement,
+    check: (out) => {
+      const { value, problems } = decodePlacement(out)
+      return problems.length ? problems : checkPlacement(value)
+    },
     effort: 'high',
   })
+  const result = decodePlacement(reply).value
   const { lessonId } = createLesson(db, {
     topicId,
     title: `Placement test: ${topic.title}`,

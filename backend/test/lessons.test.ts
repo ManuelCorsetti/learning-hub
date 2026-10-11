@@ -1,8 +1,8 @@
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { describe, expect, it } from 'vitest'
 import type { LessonView } from '../../shared/api'
-import { GeneratedLesson, GeneratedQuestions, lessonProblems, type Block, type InteractiveBlock } from '../../shared/lessons'
-import { checkGeneratedLesson, checkGeneratedQuestions, mergeQuestions } from '../src/ai/lessons'
+import { decodeLesson, decodeQuestions, LessonReply, lessonProblems, QuestionsReply, type Block, type InteractiveBlock } from '../../shared/lessons'
+import { checkGeneratedLesson, checkGeneratedQuestions, mergeQuestions, requestContext } from '../src/ai/lessons'
 import { createApp } from '../src/app'
 import { all, get, openDb, run, type Db } from '../src/db/connection'
 import { seedIfEmpty } from '../src/db/seed'
@@ -81,8 +81,30 @@ describe('lesson rules', () => {
     expect(lessonProblems([concept('c'), fill, project()]).join()).toMatch(/exactly one ___/)
   })
   it('builds structured-output schemas for both generation modes', () => {
-    expect(() => betaZodOutputFormat(GeneratedLesson)).not.toThrow()
-    expect(() => betaZodOutputFormat(GeneratedQuestions)).not.toThrow()
+    expect(() => betaZodOutputFormat(LessonReply)).not.toThrow()
+    expect(() => betaZodOutputFormat(QuestionsReply)).not.toThrow()
+    // Block unions stay out of the grammar: the API rejects it as too large.
+    expect(JSON.stringify(betaZodOutputFormat(LessonReply).schema)).not.toMatch(/quiz_mcq/)
+    expect(JSON.stringify(betaZodOutputFormat(QuestionsReply).schema)).not.toMatch(/quiz_mcq/)
+  })
+  it('decodes the block lists Claude sends as JSON strings', () => {
+    const blocks = [{ ...concept('c'), id: null }, { ...mcq('q'), id: null }]
+    expect(decodeLesson({ title: 'T', blocks_json: JSON.stringify(blocks) })).toMatchObject({ problems: [], value: { title: 'T', blocks } })
+    expect(decodeLesson({ title: 'T', blocks_json: '[{' }).problems).toEqual(['blocks_json is not valid JSON'])
+    expect(decodeLesson({ title: 'T', blocks_json: '[{"type":"quiz_mcq","id":null}]' }).problems[0]).toMatch(/^blocks_json: /)
+    const questions = [{ after_block_id: 'c', block: { ...mcq('q'), id: null } }]
+    const project_prompt = { type: 'project_prompt' as const, id: null, description: 'Build it', success_criteria: ['One'] }
+    expect(decodeQuestions({ questions_json: JSON.stringify(questions), project_prompt })).toMatchObject({ problems: [], value: { questions } })
+  })
+  it('sends the person\'s messages and the plan, not the planner\'s turns, once there is a plan', () => {
+    const plan = { title: 'P', summary: 'S', outline: ['a'], examples: 'e' }
+    const messages = [
+      { role: 'assistant' as const, reply: 'What for?', questions: ['Which tool?'], ready: false },
+      { role: 'user' as const, content: 'Claude Code' },
+    ]
+    const request = { id: 'r', topic_id: 't', level: null, brief: 'B', status: 'open', lesson_id: null, messages, plan } as never
+    expect(requestContext(request)).toEqual({ level: null, brief: 'B', agreed_plan: plan, my_messages: ['Claude Code'] })
+    expect(requestContext({ ...(request as object), plan: null } as never)).toEqual({ level: null, brief: 'B', conversation: messages })
   })
   it('assigns ids the AI left out', () => {
     const blocks = assignIds([{ ...concept('c'), id: null }, { ...mcq('q'), id: null }, { ...mcq('q'), id: 'kept' }])

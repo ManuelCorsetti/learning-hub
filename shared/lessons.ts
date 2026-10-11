@@ -120,16 +120,50 @@ export const GeneratedLesson = z.object({ title: text, blocks: z.array(Generated
 export type GeneratedLesson = z.infer<typeof GeneratedLesson>
 
 /** Questions for a lesson that only has teaching blocks (e.g. an imported article). */
-export const GeneratedQuestions = z.object({
-  questions: z.array(
-    z.object({
-      after_block_id: text.describe('id of the teaching block this question follows'),
-      block: GeneratedQuestion,
-    }),
-  ),
+export const PlacedQuestion = z.object({
+  after_block_id: text.describe('id of the teaching block this question follows'),
+  block: GeneratedQuestion,
+})
+export const GeneratedQuestions = z.object({ questions: z.array(PlacedQuestion), project_prompt: generated.project_prompt })
+export type GeneratedQuestions = z.infer<typeof GeneratedQuestions>
+
+// What Claude actually sends for the schemas above. Block lists travel as JSON strings, validated
+// here against the block schemas (with the usual retry): the API rejects the block union inside
+// the output grammar as "compiled grammar is too large" once it grows past a few block types.
+export const LessonReply = z.object({
+  title: text,
+  blocks_json: z.string().describe('JSON array (as a string) of the lesson blocks, in order'),
+})
+export type LessonReply = z.infer<typeof LessonReply>
+export const QuestionsReply = z.object({
+  questions_json: z.string().describe('JSON array (as a string) of {"after_block_id": "…", "block": {…}}'),
   project_prompt: generated.project_prompt,
 })
-export type GeneratedQuestions = z.infer<typeof GeneratedQuestions>
+export type QuestionsReply = z.infer<typeof QuestionsReply>
+
+/** Parses a JSON array Claude returned in a string field and validates every item. */
+export function parseJsonArray<T>(json: string, item: z.ZodType<T>, field: string): { items: T[]; problems: string[] } {
+  let raw: unknown
+  try {
+    raw = JSON.parse(json)
+  } catch {
+    return { items: [], problems: [`${field} is not valid JSON`] }
+  }
+  const parsed = z.array(item).safeParse(raw)
+  return parsed.success
+    ? { items: parsed.data, problems: [] }
+    : { items: [], problems: [`${field}: ${z.prettifyError(parsed.error)}`] }
+}
+
+export function decodeLesson(out: LessonReply): { value: GeneratedLesson; problems: string[] } {
+  const { items, problems } = parseJsonArray(out.blocks_json, GeneratedBlock, 'blocks_json')
+  return { value: { title: out.title, blocks: items }, problems }
+}
+
+export function decodeQuestions(out: QuestionsReply): { value: GeneratedQuestions; problems: string[] } {
+  const { items, problems } = parseJsonArray(out.questions_json, PlacedQuestion, 'questions_json')
+  return { value: { questions: items, project_prompt: out.project_prompt }, problems }
+}
 
 const TEACHING = new Set<string>(TEACHING_BLOCK_TYPES)
 export const isTeaching = (b: { type: string }): b is TeachingBlock => TEACHING.has(b.type)

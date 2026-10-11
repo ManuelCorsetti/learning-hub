@@ -3,7 +3,7 @@
 import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
 import type { ChatMessageView } from '../../../shared/api'
-import { EditedBlock, type Block } from '../../../shared/lessons'
+import { EditedBlock, parseJsonArray, type Block } from '../../../shared/lessons'
 import type { LessonPatchOp } from '../../../shared/proposals'
 import { all, type Db } from '../db/connection'
 import { AppError, newId } from '../lib'
@@ -15,8 +15,7 @@ import { callStructured } from './client'
 import { topicContext } from './lessons'
 
 // The edited blocks travel as a JSON string, validated here against the block schemas (with the
-// usual retry). Every attempt to constrain them in the output grammar itself was rejected by the
-// API as "compiled grammar is too large".
+// usual retry), like every block list Claude writes (see LessonReply in shared/lessons.ts).
 export const EditorOutput = z.object({
   reply: z.string().min(1).max(2000).describe('What you say to the person: short, plain, no preamble'),
   change_note: z.string().max(200).describe('One line for the version history; empty when nothing changes'),
@@ -29,16 +28,8 @@ export type EditorOutput = z.infer<typeof EditorOutput>
 /** Parses and validates blocks_json. */
 export function parseEditedBlocks(json: string): { blocks: EditedBlock[]; problems: string[] } {
   if (!json.trim()) return { blocks: [], problems: [] }
-  let raw: unknown
-  try {
-    raw = JSON.parse(json)
-  } catch {
-    return { blocks: [], problems: ['blocks_json is not valid JSON'] }
-  }
-  const parsed = z.array(EditedBlock).safeParse(raw)
-  return parsed.success
-    ? { blocks: parsed.data, problems: [] }
-    : { blocks: [], problems: [`blocks_json: ${z.prettifyError(parsed.error)}`] }
+  const { items, problems } = parseJsonArray(json, EditedBlock, 'blocks_json')
+  return { blocks: items, problems }
 }
 
 /**

@@ -4,7 +4,12 @@ You receive the topic (title, summary, why they care, area), its parent topic an
 
 Return:
 - scope: two or three sentences, in Markdown, on what the test covers and at what depth. Shown before the questions.
-- questions: 5 to 12 questions that together cover the core of the topic at the level someone who "knows it" should have. Use the question types quiz_mcq, quiz_true_false, fill_in_blank, code_challenge (only when the topic involves code, SQL or commands) and ordering, mixed as they fit. Leave every id null.
+- questions_json: a JSON array (as a string) of 5 to 12 question blocks, each an object with "type", "id" (null) and that type's fields. Together they cover the core of the topic at the level someone who "knows it" should have. Use the question types quiz_mcq, quiz_true_false, fill_in_blank, code_challenge (only when the topic involves code, SQL or commands) and ordering, mixed as they fit. Leave every id null. The fields of each type:
+  - quiz_mcq: question, options (exactly 4), correct_index (0–3), pitfall_note
+  - quiz_true_false: statement, answer (true/false), pitfall_note
+  - fill_in_blank: sentence (with exactly one ___), acceptable_answers
+  - code_challenge: language, question, snippet, expected_answer, acceptable_answers, hint
+  - ordering: prompt, items_shuffled (3–6 items), correct_order
 
 Rules:
 - Test understanding and judgement, not trivia, dates or vendor-specific minutiae the person would look up.

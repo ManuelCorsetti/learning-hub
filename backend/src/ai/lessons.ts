@@ -3,13 +3,17 @@
 // through lesson_patch proposals in Phase 3.
 import type { DiagramKey } from '../../../shared/domain'
 import {
-  GeneratedLesson,
-  GeneratedQuestions,
+  decodeLesson,
+  decodeQuestions,
   isInteractive,
+  LessonReply,
+  QuestionsReply,
   isScheduledType,
   isTeaching,
   lessonProblems,
   type Block,
+  type GeneratedLesson,
+  type GeneratedQuestions,
 } from '../../../shared/lessons'
 import { all, get, type Db } from '../db/connection'
 import { AppError } from '../lib'
@@ -122,29 +126,40 @@ export function checkGeneratedQuestions(out: GeneratedQuestions, teaching: Block
   return problems.length ? problems : lessonProblems(mergeQuestions(teaching, out))
 }
 
+/**
+ * The planning conversation as the writer sees it. Once there is a plan, the planner has already
+ * folded its own turns into it, so only the person's messages travel with it (they may add
+ * constraints the plan states loosely); without a plan the whole conversation does.
+ */
+export function requestContext(request: LessonRequestView) {
+  const base = { level: request.level, brief: request.brief }
+  if (!request.plan) return { ...base, conversation: request.messages }
+  const mine = request.messages.flatMap((m) => (m.role === 'user' ? [m.content] : []))
+  return { ...base, agreed_plan: request.plan, my_messages: mine }
+}
+
 export async function generateLesson(
   db: Db,
   topicId: string,
   request: LessonRequestView | null = null,
 ): Promise<{ lessonId: string; runId: string }> {
   const ctx = topicContext(db, topicId)
-  const { runId, result } = await callStructured(db, {
+  const { runId, result: reply } = await callStructured(db, {
     task: 'generate_lesson',
     promptName: 'lesson_generator',
-    schema: GeneratedLesson,
+    schema: LessonReply,
     input: {
       mode: 'full_lesson',
       ...ctx,
-      request: request && {
-        level: request.level,
-        brief: request.brief,
-        conversation: request.messages,
-        agreed_plan: request.plan,
-      },
+      request: request && requestContext(request),
     },
-    check: checkGeneratedLesson,
+    check: (out) => {
+      const { value, problems } = decodeLesson(out)
+      return problems.length ? problems : checkGeneratedLesson(value)
+    },
     effort: 'high',
   })
+  const result = decodeLesson(reply).value
   const { lessonId } = createLesson(db, {
     topicId,
     title: result.title,
@@ -174,14 +189,18 @@ export async function generateQuestions(db: Db, lessonId: string): Promise<{ ver
     throw new AppError('This lesson already has questions. Editing them comes with co-authoring.', 409)
   }
   const teaching = blocks.filter(isTeaching)
-  const { runId, result } = await callStructured(db, {
+  const { runId, result: reply } = await callStructured(db, {
     task: 'generate_lesson',
     promptName: 'lesson_generator',
-    schema: GeneratedQuestions,
+    schema: QuestionsReply,
     input: { mode: 'questions_only', ...topicContext(db, lesson.topic_id), lesson: { title: lesson.title, blocks: teaching } },
-    check: (out) => checkGeneratedQuestions(out, teaching),
+    check: (out) => {
+      const { value, problems } = decodeQuestions(out)
+      return problems.length ? problems : checkGeneratedQuestions(value, teaching)
+    },
     effort: 'high',
   })
+  const result = decodeQuestions(reply).value
   const versionId = addVersion(db, lessonId, {
     blocks: mergeQuestions(teaching, result),
     createdBy: 'ai',

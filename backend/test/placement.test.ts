@@ -1,6 +1,6 @@
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { describe, expect, it } from 'vitest'
-import { checkPlacement, placementBlocks, PlacementOutput } from '../src/ai/placement'
+import { checkPlacement, decodePlacement, placementBlocks, PlacementReply } from '../src/ai/placement'
 import { get, openDb } from '../src/db/connection'
 import { USER } from '../src/services/events'
 import { createLesson, getLessonView } from '../src/services/lessons'
@@ -15,7 +15,8 @@ describe('placement tests', () => {
     const out = { scope: 'Covers the basics.', questions: [1, 2, 3, 4, 5].map(tf) }
     expect(checkPlacement(out)).toEqual([])
     expect(checkPlacement({ ...out, questions: [tf(1)] }).join()).toMatch(/5 to 12/)
-    expect(() => betaZodOutputFormat(PlacementOutput)).not.toThrow()
+    expect(() => betaZodOutputFormat(PlacementReply)).not.toThrow()
+    expect(decodePlacement({ scope: 'S', questions_json: JSON.stringify(out.questions) })).toEqual({ value: { ...out, scope: 'S' }, problems: [] })
   })
 
   it('is a lesson whose answers measure the topic, in a placement session', () => {
