@@ -5,6 +5,7 @@ import type { ChatMessageView, LessonPatchView, LessonView, PatchChange } from '
 import type { Block } from '../../../shared/lessons'
 import { api, useAction, useApi } from '../api'
 import { BlockPreview, blockKind } from './lesson/BlockPreview'
+import { Markdown } from './lesson/Markdown'
 import { formatDateTime } from './status'
 
 const blockLabel = (b: Block | undefined) => (b ? ('title' in b ? b.title : blockKind(b)) : 'a block')
@@ -104,7 +105,7 @@ function Notes({
           </div>
         ) : (
           <div key={m.id} className="chat-msg assistant">
-            <p>{m.content}</p>
+            <Markdown text={m.content} />
             {m.patch && <PatchCard patch={m.patch} />}
           </div>
         ),
