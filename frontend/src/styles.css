@@ -322,6 +322,14 @@ a.card:hover, button.card:hover { transform: translateY(-3px); box-shadow: 0 14p
 .q-head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .q-kind { font: 500 10px var(--mono); text-transform: uppercase; letter-spacing: 0.1em; color: var(--lav); }
 .q-meta { font: 400 11px var(--mono); color: var(--faint); }
+.question.folded { display: flex; flex-direction: column; gap: 6px; width: 100%; text-align: left; color: var(--ink); padding: 12px 20px; border-left-color: var(--sage); cursor: pointer; }
+.question.folded .q-head { margin-bottom: 0; }
+.question.folded:hover { background: #fff; }
+.question.folded:hover .q-open { color: var(--orange-ink); }
+.q-preview { font-size: 14px; line-height: 1.5; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.q-open { font: 500 11px var(--mono); color: var(--faint); }
+.q-head .row { gap: 12px; flex-wrap: nowrap; }
+.q-fold { font: 400 11px var(--mono); }
 .q-text { font-size: 16px; line-height: 1.6; margin-bottom: 14px; }
 .q-text.fill input { margin: 0 6px; font-family: var(--mono); padding: 3px 8px; }
 .q-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }

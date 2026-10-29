@@ -2,20 +2,33 @@
 // fenced code, **bold**, *italic* and `code`. Rendered as React elements, never as HTML.
 import type { ReactNode } from 'react'
 
-const INLINE = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*\s][^*]*\*|_[^_\s][^_]*_)/g
+// Code spans open and close with the same run of backticks, so `` `a`.`b` `` can hold backticks
+// (BigQuery names). Underscore emphasis needs a word boundary, so dbt_alice stays as written.
+const INLINE = /(?<!`)(`+)(?!`)([\s\S]*?[^`])\1(?!`)|\*\*([^*]+)\*\*|\*([^*\s][^*]*)\*|(?<!\w)_([^_\s][^_]*)_(?!\w)/g
+
+export type InlinePart = string | { code: string } | { strong: string } | { em: string }
+
+export function parseInline(text: string): InlinePart[] {
+  const parts: InlinePart[] = []
+  let last = 0
+  for (const m of text.matchAll(INLINE)) {
+    if (m.index > last) parts.push(text.slice(last, m.index))
+    // One space on each side is padding, as in CommonMark: `` `x` `` is the code `x`.
+    if (m[1]) parts.push({ code: /^ .* $/s.test(m[2]) && m[2].trim() ? m[2].slice(1, -1) : m[2] })
+    else if (m[3] !== undefined) parts.push({ strong: m[3] })
+    else parts.push({ em: m[4] ?? m[5] })
+    last = m.index + m[0].length
+  }
+  if (last < text.length) parts.push(text.slice(last))
+  return parts
+}
 
 export function Inline({ text }: { text: string }) {
-  const parts = text.split(INLINE).filter(Boolean)
   return (
     <>
-      {parts.map((p, i) => {
-        if (p.startsWith('`') && p.endsWith('`') && p.length > 1) return <code key={i}>{p.slice(1, -1)}</code>
-        if (p.startsWith('**') && p.endsWith('**') && p.length > 3) return <strong key={i}>{p.slice(2, -2)}</strong>
-        if ((p.startsWith('*') && p.endsWith('*')) || (p.startsWith('_') && p.endsWith('_'))) {
-          if (p.length > 2) return <em key={i}>{p.slice(1, -1)}</em>
-        }
-        return p
-      })}
+      {parseInline(text).map((p, i) =>
+        typeof p === 'string' ? p : 'code' in p ? <code key={i}>{p.code}</code> : 'strong' in p ? <strong key={i}>{p.strong}</strong> : <em key={i}>{p.em}</em>,
+      )}
     </>
   )
 }
