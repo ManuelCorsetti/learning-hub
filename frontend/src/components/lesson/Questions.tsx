@@ -21,6 +21,24 @@ const KIND_LABELS: Record<InteractiveBlock['type'], string> = {
 
 type Draft = number | boolean | string | string[] | number[] | null
 
+/** Answered before and not due yet: shown folded, so the lesson reads cleanly. */
+const notDue = (progress?: ItemProgress) => Boolean(progress?.attempts && progress.due_at && new Date(progress.due_at).getTime() > Date.now())
+
+function questionText(block: InteractiveBlock): string {
+  switch (block.type) {
+    case 'quiz_true_false':
+      return block.statement
+    case 'fill_in_blank':
+      return block.sentence.replace(BLANK, '___')
+    case 'ordering':
+      return block.prompt
+    case 'project_prompt':
+      return block.description
+    default:
+      return block.question
+  }
+}
+
 function emptyDraft(block: InteractiveBlock): Draft {
   if (block.type === 'ordering') return [...block.items_shuffled]
   if (block.type === 'project_prompt') return []
@@ -58,6 +76,7 @@ export function QuestionCard({
 }) {
   const [draft, setDraft] = useState<Draft>(() => emptyDraft(block))
   const [result, setResult] = useState<AttemptResult | null>(null)
+  const [folded, setFolded] = useState(() => notDue(progress))
   const { busy, error, run } = useAction()
   const answer = toAnswer(block, draft)
   const locked = Boolean(result) || busy
@@ -72,11 +91,33 @@ export function QuestionCard({
   }
   const verdict = !result ? '' : result.is_correct === null ? 'logged' : result.is_correct ? 'right' : result.score >= 0.5 ? 'partly' : 'wrong'
 
+  if (folded) {
+    return (
+      <button className="question folded" onClick={() => setFolded(false)} aria-expanded={false} title="Not due yet. Open to test yourself again.">
+        <span className="q-head">
+          <span className="q-kind">{KIND_LABELS[block.type]}</span>
+          {progress && <ProgressNote progress={progress} />}
+        </span>
+        <span className="q-preview">
+          <Inline text={questionText(block)} />
+        </span>
+        <span className="q-open">Test again ▸</span>
+      </button>
+    )
+  }
+
   return (
     <div className={`question ${verdict}`}>
       <div className="q-head">
         <span className="q-kind">{KIND_LABELS[block.type]}</span>
-        {progress && !result && <ProgressNote progress={progress} />}
+        <span className="row">
+          {progress && !result && <ProgressNote progress={progress} />}
+          {!result && notDue(progress) && (
+            <button className="btn link small q-fold" onClick={() => setFolded(true)} aria-expanded>
+              Hide
+            </button>
+          )}
+        </span>
       </div>
       <Widget block={block} draft={draft} setDraft={setDraft} locked={locked} result={result} />
       {!result &&
