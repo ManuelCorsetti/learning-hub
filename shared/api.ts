@@ -124,6 +124,29 @@ export const LessonMessageInput = z.object({
   block_id: z.string().nullable().optional(),
 })
 
+/** A question about text the person selected anywhere in the app, with the page it came from. */
+export const AskInput = z.object({
+  selection: z.string().trim().min(1).max(4000),
+  question: z.string().trim().min(1).max(2000),
+  context: z.object({
+    lesson_id: z.string().nullable().optional(),
+    block_id: z.string().nullable().optional(),
+    topic_id: z.string().nullable().optional(),
+    area_id: z.string().nullable().optional(),
+  }),
+  history: z
+    .array(z.object({ selection: z.string().max(4000), question: z.string().max(2000), answer: z.string().max(6000) }))
+    .max(8)
+    .default([]),
+})
+export type AskInput = z.infer<typeof AskInput>
+
+export interface AskAnswer {
+  answer: string
+  follow_ups: string[]
+  run_id: string
+}
+
 export const LessonRequestReplyInput = z.object({ message: z.string().trim().min(1).max(4000) })
 
 export const CaptureInput = z.object({ text: text.min(3).max(20000) })

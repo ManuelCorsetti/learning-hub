@@ -1,6 +1,6 @@
 // A lesson: the latest version's blocks in order, in the v0.1 article layout
 // (sticky table of contents on the left). Questions are answered inline.
-import { useState, type CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import type { LessonView, Measurement } from '../../../shared/api'
 import { isInteractive, type Block, type InteractiveBlock } from '../../../shared/lessons'
 import { api, useAction, useApi } from '../api'
@@ -9,6 +9,7 @@ import { ConceptBlock, DiagramBlock, StepsBlock } from '../components/lesson/Tea
 import { useStudySession } from '../components/lesson/useStudySession'
 import { formatDate, percent } from '../components/status'
 import { Breadcrumbs, topicCrumbs } from '../components/Breadcrumbs'
+import { NOTE_EVENT, type NoteEventDetail } from '../components/AskPanel'
 import { CoauthorPanel } from '../components/CoauthorPanel'
 
 interface Section {
@@ -36,6 +37,11 @@ export function LessonPage({ lessonId, aiAvailable }: { lessonId: string; aiAvai
   const { data: lesson, error } = useApi<LessonView>(`/lessons/${lessonId}`)
   // Kept outside <Lesson> so the panel stays open when an accepted edit loads the new version.
   const [coauthor, setCoauthor] = useState<{ open: boolean; blockId: string | null; draft?: string }>({ open: false, blockId: null })
+  useEffect(() => {
+    const onNote = (e: Event) => setCoauthor({ open: true, ...(e as CustomEvent<NoteEventDetail>).detail })
+    window.addEventListener(NOTE_EVENT, onNote)
+    return () => window.removeEventListener(NOTE_EVENT, onNote)
+  }, [])
   if (error) return <p className="error">{error}</p>
   if (!lesson) return <p className="muted">Loading…</p>
   return (
@@ -134,7 +140,7 @@ function Lesson({ lesson, aiAvailable, onNote }: { lesson: LessonView; aiAvailab
               <div>
                 <h2>{s.title}</h2>
                 {s.blocks.map((b) => (
-                  <div key={b.id} className={`block block-${b.type}`}>
+                  <div key={b.id} className={`block block-${b.type}`} data-block-id={b.id}>
                     <button className="note-btn" onClick={() => onNote(b.id)} title="Write a note about this block">
                       ✎ Note
                     </button>
@@ -146,7 +152,7 @@ function Lesson({ lesson, aiAvailable, onNote }: { lesson: LessonView; aiAvailab
           ))}
           {placement && <PlacementSummary lesson={lesson} />}
           {project && (
-            <section className="finish-card" id={`block-${project.id}`}>
+            <section className="finish-card" id={`block-${project.id}`} data-block-id={project.id}>
               <span className="eyebrow">Put it to work</span>
               <QuestionCard
                 block={project}

@@ -1,5 +1,6 @@
 import type { HomeData } from '../../shared/api'
 import { useApi } from './api'
+import { AskSelection } from './components/AskPanel'
 import { AreaPage } from './pages/AreaPage'
 import { GoalsPage } from './pages/GoalsPage'
 import { HomePage } from './pages/HomePage'
@@ -60,6 +61,7 @@ export function App() {
         {route.page === 'settings' && <SettingsPage />}
         {route.page === 'topic' && <TopicPage topicId={route.topicId} aiAvailable={home.data?.aiAvailable ?? false} />}
       </main>
+      <AskSelection key={window.location.hash} route={route} aiAvailable={home.data?.aiAvailable ?? false} />
       <footer>
         <span>Learning Studio</span>
         <span>Built for understanding, not collecting tabs.</span>

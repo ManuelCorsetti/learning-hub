@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono'
 import { z } from 'zod'
 import {
   AcceptManyInput,
+  AskInput,
   AttemptInput,
   CaptureInput,
   CreateAreaInput,
@@ -21,6 +22,7 @@ import {
   UpdateGoalInput,
   UpdateTopicInput,
 } from '../../shared/api'
+import { askAboutSelection } from './ai/ask'
 import { aiConfigured } from './ai/client'
 import { runCapture } from './ai/capture'
 import { sendLessonMessage } from './ai/lessonEditor'
@@ -183,6 +185,10 @@ export function createApp(db: Db, options: { aiAvailable?: () => boolean } = {})
   app.post('/capture', async (c) => {
     requireAi()
     return c.json(await runCapture(db, (await body(c, CaptureInput)).text))
+  })
+  app.post('/ask', async (c) => {
+    requireAi()
+    return c.json(await askAboutSelection(db, await body(c, AskInput)))
   })
   app.get('/optimise/signals', (c) => c.json(optimiseSignals(db)))
   app.post('/optimise', async (c) => {

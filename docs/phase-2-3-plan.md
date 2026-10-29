@@ -18,6 +18,11 @@ Follows on from [phase-1-plan.md](phase-1-plan.md) and uses the tables in
   item, is not). Its stop-for-review steps still need real runs, since the build
   had no API key (the free-text grading by `prompts/answer_grader.txt` too): the co-author prompt (`prompts/lesson_editor.txt`) and diff,
   `prompts/optimise.txt` and `prompts/placement.txt`.
+- **Ask about a selection is built**: select text on any page (except Practice)
+  and ask Claude about it (`backend/src/ai/ask.ts`, `prompts/ask.txt`,
+  `frontend/src/components/AskPanel.tsx`). Answers are not saved; on a lesson
+  one can become a note in Notes & edits. `prompts/ask.txt` needs a review on
+  real questions.
 
 Where Phase 2 lives:
 
