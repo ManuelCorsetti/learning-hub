@@ -32,6 +32,8 @@ export const api = {
     notifyChanged()
     return result
   },
+  /** A POST that changes nothing, so nothing refetches. */
+  postRead: <T>(path: string, body: unknown) => request<T>('POST', path, body),
   patch: async <T>(path: string, body: unknown) => {
     const result = await request<T>('PATCH', path, body)
     notifyChanged()

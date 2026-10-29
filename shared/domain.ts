@@ -56,6 +56,7 @@ export const AI_TASKS = [
   'optimise',
   'placement',
   'grade_answer',
+  'ask',
 ] as const
 export type AiTask = (typeof AI_TASKS)[number]
 

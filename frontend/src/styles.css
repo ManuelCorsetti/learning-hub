@@ -419,6 +419,27 @@ a.topic-row { color: inherit; text-decoration: none; }
 .error-block { background: #5a2a20; }
 .ai-run-detail summary { cursor: pointer; font-size: 13px; color: var(--muted); }
 
+/* ---------- Ask about a selection ---------- */
+.ask-float {
+  position: fixed; z-index: 50; transform: translate(-50%, -100%); border: 0; border-radius: 20px; padding: 7px 13px;
+  background: var(--green); color: var(--paper); font: 500 12px var(--sans); box-shadow: 0 8px 24px rgba(28, 37, 35, 0.22); white-space: nowrap;
+}
+.ask-float.below { transform: translate(-50%, 0); }
+.ask-float:hover { background: var(--orange); }
+.panel.ask-panel { z-index: 40; display: flex; flex-direction: column; gap: 14px; }
+.ask-panel .panel-head h2 { margin: 0; }
+.ask-panel p { margin: 0; }
+.ask-quote {
+  margin: 0; border-left: 3px solid var(--orange); padding: 2px 0 2px 12px; color: #4f5a53; font-size: 13px; line-height: 1.55;
+  white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ask-quote-row { display: flex; gap: 8px; align-items: flex-start; }
+.ask-quote-row .ask-quote { flex: 1; }
+.ask-form { border-top: 1px solid var(--line-soft); padding-top: 14px; }
+.ask-chip { cursor: pointer; text-align: left; }
+.ask-chip:hover { color: var(--orange-ink); border-color: var(--orange); }
+.ask-note { display: block; margin-top: 10px; }
+
 /* ---------- Co-author ---------- */
 .block { position: relative; }
 .note-btn {
