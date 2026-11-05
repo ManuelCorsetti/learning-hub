@@ -8,6 +8,7 @@ your answers drive a spaced-repetition scheduler (FSRS) that measures mastery.
 - [docs/phase-1-plan.md](docs/phase-1-plan.md): what is built now, and why
 - [docs/data-model.md](docs/data-model.md): conceptual, logical and physical data model
 - [docs/phase-2-3-plan.md](docs/phase-2-3-plan.md): lessons, spaced repetition, co-authoring
+- [docs/phase-4-plan.md](docs/phase-4-plan.md): what to build next, to make the learning stick
 
 ## Run locally
 

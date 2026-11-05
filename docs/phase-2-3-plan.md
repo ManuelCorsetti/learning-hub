@@ -5,6 +5,9 @@ Follows on from [phase-1-plan.md](phase-1-plan.md) and uses the tables in
 
 ## Status and where to start
 
+- **Next: [phase-4-plan.md](phase-4-plan.md)**, a review of the app as a learning
+  system and the plan that follows from it. It proposes answers to the *Review
+  cap* and *Retention right after a wrong answer* open questions below.
 - **Phase 1 is built** (build steps 1–9). Its prompt-tuning reviews (steps 6
   and 7) still need to happen on real notes.
 - **Phase 2 is built** (build steps 10–18). Its prompt review (step 10) still

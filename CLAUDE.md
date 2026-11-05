@@ -4,7 +4,8 @@ Personal learning map: TypeScript end to end (Node 22+, Hono API, React + Vite U
 
 ## Read first
 
-- `docs/phase-2-3-plan.md`: what to build next. It starts with a "Status and where to start" table.
+- `docs/phase-4-plan.md`: what to build next (learning effectiveness). It starts with a "Status and where to start" table; Track A comes first.
+- `docs/phase-2-3-plan.md`: Phases 2, 2.5 and 3 as planned and built, and their open prompt reviews.
 - `docs/data-model.md`: the data model and the DDL for every phase.
 - `docs/phase-1-plan.md`: what is already built, and the rules below in full.
 
